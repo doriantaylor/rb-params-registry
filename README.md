@@ -1,31 +1,84 @@
-# Params::Registry
+# `Params::Registry`: A registry for named parameters
 
-TODO: Delete this and the text below, and describe your gem
+The purpose of this module is to do housekeeping around a set of
+parameters. It enables an organization to specify a single
+company-wide set of named parameters: their syntax, semantics,
+cardinalities, type coercions, constraints, conflicts and other
+interrelationships, groupings, and so on. The goal is to enforce
+consistency of parameters and what they mean, promote re-use, perform
+input sanitation and other preprocessing chores, and perform
+consistent, one-to-one, round-trip serialization for things like URI
+query strings.
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/params/registry`. To experiment with that code, run `bin/console` for an interactive prompt.
+The theoretical underpinning for `Params::Registry` is a phenomenon
+called [the symbol management
+problem](https://doriantaylor.com/the-symbol-management-problem),
+namely that within a given information system, you have a bunch of
+_symbols_, which you have to _manage_, and this is a _problem_.
+`Params::Registry` endeavours to take one category of symbols off the
+table: named parameters that are exposed to the wild through mechanisms
+like URLs and APIs.
 
-## Installation
+## So, query parameters, isn't that like, _super_ anal?
 
-TODO: Replace `UPDATE_WITH_YOUR_GEM_NAME_PRIOR_TO_RELEASE_TO_RUBYGEMS_ORG` with your gem name right after releasing it to RubyGems.org. Please do not do it earlier due to security reasons. Alternatively, replace this section with instructions to install your gem from git if you don't plan to release to RubyGems.org.
+So, I vacillated for _years_ before making [the _first_ version of
+this module](https://metacpan.org/dist/Params-Registry) back in 2013.
+_Query_ parameters? I mean, who cares? Well, it turns out that if you
+want certain outcomes, this is the kind of software you need. _What_
+outcomes, you ask?
 
-Install the gem and add to the application's Gemfile by executing:
+* Your organization has different parts of its website that use the
+  same parameters to mean the same or similar things.
+* Your organization has different parts of its website that use
+  _different_ parameters to mean the _same_ things.
+* Your organization has _more_ than one website, with non-zero overlap
+  in their respective functionalities.
+* Arbitrary data coming in off the wire (even in something like a
+  URL!) is untrustworthy, so it behooves us to check it.
+* Some parameters may be required, others optional, or they could have
+  complex relationships with each other like dependencies and conflicts.
+* Whatever's consuming the parameters may be able to correct if a
+  parameter value is out of bounds (e.g. not in a database), even if
+  it is otherwise valid.
+* You want to be able to issue redirects in the case of recoverable
+  conflicts in the input, and genuinely helpful error messages for the
+  non-recoverable ones.
+* Whatever code is consuming the parameters is combining two or more
+  key-value pairs into composite objects.
 
-    $ bundle add UPDATE_WITH_YOUR_GEM_NAME_PRIOR_TO_RELEASE_TO_RUBYGEMS_ORG
+Okay, all that is pretty uncontroversially useful stuff, but
+represents something you could probably hack together on an ad-hoc
+basis if you really cared. It wouldn't require maintaining an
+organization-wide parameter registry. But how about crazy stuff like:
 
-If bundler is not being used to manage dependencies, install the gem by executing:
+* What if you wanted to round-trip the parameter sets, so that a given
+  data structure would _always_ serialize—bit for bit—to the same
+  query string, and back again?
+* What if you wanted to gracefully handle name changes for the
+  parameters, and/or translate their names into different languages?
 
-    $ gem install UPDATE_WITH_YOUR_GEM_NAME_PRIOR_TO_RELEASE_TO_RUBYGEMS_ORG
+I shouldn't have to spell out the value of these, but the reason why
+you would care about round-tripping the query string is to lower the
+footprint out in the wild of URLs that were _different_ lexically but
+identified the same resource and/or representational state. The reason
+why you would care about parameter naming history is to catch
+otherwise broken links and correct them (e.g. through a `301`
+redirect), for the same purpose. The reason why you would want to
+localize parameter names _should_ be obvious, it just shares its
+mechanism with the naming history.
 
-## Usage
+In essence, this module takes a category of symbol that couldn't
+viably be managed in an organization of even _modest_ size, and makes
+it manageable for an organization of _any_ size.
 
-TODO: Write usage instructions here
+# Contributing
 
-## Development
+Bug reports and pull requests are welcome at
+[the GitHub repository](https://github.com/doriantaylor/rb-params-registry).
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+# Copyright & License
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+©2023 [Dorian Taylor](https://doriantaylor.com/)
 
-## Contributing
-
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/params-registry.
+This software is provided under
+the [Apache License, 2.0](https://www.apache.org/licenses/LICENSE-2.0).

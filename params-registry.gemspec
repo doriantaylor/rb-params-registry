@@ -8,10 +8,9 @@ Gem::Specification.new do |spec|
   spec.authors = ["Dorian Taylor"]
   spec.email = ["code@doriantaylor.com"]
 
-  spec.summary = "Params::Registry: a registry for URI parameters"
-  spec.description = <<~DESC
-
-DESC
+  spec.summary = "Params::Registry: a registry for URI query parameters"
+  spec.description =
+    File.open('README.md').read.split(/(\r?\n){2,}/).take(2).join("\n\n")
 
   spec.homepage = "https://github.com/doriantaylor/rb-params-registry"
   spec.license  = "Apache-2.0"
