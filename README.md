@@ -1,23 +1,22 @@
 # `Params::Registry`: A registry for named parameters
 
-The purpose of this module is to do housekeeping around a set of
-parameters. It enables an organization to specify a single
-company-wide set of named parameters: their syntax, semantics,
-cardinalities, type coercions, constraints, conflicts and other
-interrelationships, groupings, and so on. The goal is to enforce
-consistency of parameters and what they mean, promote re-use, perform
-input sanitation and other preprocessing chores, and perform
-consistent, one-to-one, round-trip serialization for things like URI
-query strings.
+This module enables an organization to specify a single company-wide
+set of named parameters: their syntax, semantics, cardinalities, type
+coercions, constraints, conflicts and other interrelationships,
+groupings, and so on. The goal is to enforce consistency over
+(especially) public-facing parameters and what they mean, promote
+re-use, perform input sanitation and other preprocessing chores, and
+do consistent, one-to-one, round-trip serialization for things like
+URI query strings.
 
-The theoretical underpinning for `Params::Registry` is a phenomenon
-called [the symbol management
+The theoretical underpinning for `Params::Registry` is a phenomenon I
+call [the symbol management
 problem](https://doriantaylor.com/the-symbol-management-problem),
 namely that within a given information system, you have a bunch of
 _symbols_, which you have to _manage_, and this is a _problem_.
 `Params::Registry` endeavours to take one category of symbols off the
-table: named parameters that are exposed to the wild through mechanisms
-like URLs and APIs.
+table: named parameters that are exposed to the wild through
+mechanisms like URLs and APIs.
 
 ## So, query parameters, isn't that like, _super_ anal?
 
@@ -37,14 +36,16 @@ outcomes, you ask?
   URL!) is untrustworthy, so it behooves us to check it.
 * Some parameters may be required, others optional, or they could have
   complex relationships with each other like dependencies and conflicts.
+* Whatever code that consumes the parameters is turning them into some
+  kind of object (i.e., not just a primitive datatype like a string or
+  integer), potentially combining two or more key-value pairs into
+  composites.
 * Whatever's consuming the parameters may be able to correct if a
   parameter value is out of bounds (e.g. not in a database), even if
   it is otherwise valid.
 * You want to be able to issue redirects in the case of recoverable
   conflicts in the input, and genuinely helpful error messages for the
   non-recoverable ones.
-* Whatever code is consuming the parameters is combining two or more
-  key-value pairs into composite objects.
 
 Okay, all that is pretty uncontroversially useful stuff, but
 represents something you could probably hack together on an ad-hoc
@@ -61,11 +62,12 @@ I shouldn't have to spell out the value of these, but the reason why
 you would care about round-tripping the query string is to lower the
 footprint out in the wild of URLs that were _different_ lexically but
 identified the same resource and/or representational state. The reason
-why you would care about parameter naming history is to catch
-otherwise broken links and correct them (e.g. through a `301`
-redirect), for the same purpose. The reason why you would want to
-localize parameter names _should_ be obvious, it just shares its
-mechanism with the naming history.
+why you would care about parameter naming history is to improve user
+experience—directly and via search engines—by catching otherwise
+broken links and correcting them (e.g. through a `301` redirect), for
+the same purpose. The reason why you would want to localize parameter
+names _should_ be obvious, it just shares its mechanism with the
+naming history.
 
 In essence, this module takes a category of symbol that couldn't
 viably be managed in an organization of even _modest_ size, and makes
