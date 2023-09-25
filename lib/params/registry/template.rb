@@ -128,7 +128,7 @@ class Params::Registry::Template
 
   attr_reader :registry, :id, :slug, :type, :composite, :format,
     :aliases, :depends, :conflicts, :consumes, :preproc, :min, :max,
-    :default, :complement, :unwind
+    :default, :unwind
 
   # @!attribute [r] universe
   #  @return [Object, nil] the universal e.g. set or range from which valid
@@ -136,6 +136,22 @@ class Params::Registry::Template
   def universe
     refresh! unless @universe
     @universe
+  end
+
+  # Return the complement of the composite value for the parameter.
+  #
+  # @param value [Object] the composite object to complement.
+  #
+  # @return [Object, nil] the complementary object, if a complement is defined.
+  #
+  def complement value
+    begin
+      instance_exec value, &@complement
+    rescue e
+      raise Params::Registry::Error::Empirical.new(
+        "Complement function failed: #{e.message}",
+        context: self, value: value)
+    end if @complement
   end
 
   # @return [Boolean] whether to shift values more than `max`
@@ -148,8 +164,16 @@ class Params::Registry::Template
   # @return [Boolean] whether to interpret composite values as reversed.
   def reverse? ; !!@reverse; end
 
+  # @return [Boolean] whether there is a complement
+  def complement? ; !!@complement; end
+
   # Validate a list of individual parameter values and (optionally)
   # construct a `composite` value.
+  #
+  # @param values [Array] the values given for the parameter.
+  #
+  # @return [Object, Array] the processed value(s).
+  #
   def process *values
     out = []
 
@@ -224,7 +248,9 @@ class Params::Registry::Template
       tmp, comp = instance_exec value, *rest, &unwind
       value = tmp
     rescue Exception, e
-      raise Params::Registry::Error::Empirical
+      raise Params::Registry::Error::Empirical.new(
+        "Cannot unprocess value #{value} for parameter #{id}: #{e.message}",
+        context: self, value: value)
     end if unwind
 
     # ensure this thing is an array
@@ -240,9 +266,18 @@ class Params::Registry::Template
   end
 
   # Refreshes stateful information like the universal set, if present.
+  #
   # @return [void]
+  #
   def refresh!
-    univ
+    if @unifunc
+      # do we want to call or do we want to instance_exec?
+      univ = @unifunc.call
+
+      univ = @composite[univ] if @composite
+
+      @universe = univ
+    end
 
     nil
   end
