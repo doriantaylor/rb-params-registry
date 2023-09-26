@@ -7,14 +7,15 @@ require 'set'       # for some reason Set is not in the kernel but Range is
 require 'date'      # includes DateTime
 require 'time'      # ruby has Time and DateTime to be confusing
 
+# All the type coercions used in {Params::Registry}.
 module Params::Registry::Types
   include Dry.Types(default: :coercible)
 
   # Syntactic sugar for retrieving types in the library.
   #
-  # @param const [#to_sym] The type name
+  # @param const [#to_sym] The type (name).
   #
-  # @return [Dry::Types::Type] The type instance
+  # @return [Dry::Types::Type] The type instance.
   #
   def self.[] const
     return const if const.is_a? Dry::Types::Type
@@ -25,6 +26,7 @@ module Params::Registry::Types
     end
   end
 
+  # Can be anything, as long as it isn't `nil`.
   NonNil = Strict::Any.constrained not_eql: nil
 
   # Gotta have a coercible boolean (which doesn't come stock for some reason)
@@ -37,11 +39,10 @@ module Params::Registry::Types
     end
   end
 
-  Proc = self.Instance(Proc)
+  # For some reason there isn't a stock `Proc` type.
+  Proc = self.Instance(::Proc)
 
-  Registry = self.Instance(::Params::Registry)
-
-  # @group A bunch of integer types
+  # @!group A bunch of integer types
 
   # The problem with Kernel.Integer is that if a string representing
   # a number begins with a zero it's treated as octal, so we have to
@@ -50,12 +51,16 @@ module Params::Registry::Types
     i.is_a?(::Numeric) ? i.to_i : ::Kernel.Integer(i.to_s, 10)
   end
 
+  # `xsd:nonPositiveInteger`
   NonPositiveInteger = Base10Integer.constrained lteq: 0
+  # `xsd:nonNegativeInteger`
   NonNegativeInteger = Base10Integer.constrained gteq: 0
+  # `xsd:positiveInteger`
   PositiveInteger    = Base10Integer.constrained gt: 0
+  # `xsd:negativeInteger`
   NegativeInteger    = Base10Integer.constrained lt: 0
 
-  # @group Stringy stuff, à la XSD plus some others
+  # @!group Stringy stuff, à la XSD plus some others
 
   # This is `xsd:normalizedString`.
   NormalizedString = Nominal::String.constructor do |s|
@@ -96,7 +101,7 @@ module Params::Registry::Types
     s.to_s.upcase.to_sym
   end
 
-  # @group Dates & Times
+  # @!group Dates & Times
 
   # Ye olde {::Date}
   Date = self.Constructor(::Date) do |x|
@@ -120,7 +125,7 @@ module Params::Registry::Types
     end
   end
 
-  # @group Composite types not already defined
+  # @!group Composite types not already defined
 
   # {::Set}
   Set = self.Constructor(::Set) { |x| ::Set[*x] }
@@ -128,4 +133,15 @@ module Params::Registry::Types
   # {::Range}
   Range = self.Constructor(::Range) { |x| ::Range.new(*x.take(2)) }
 
+  # The registry itself
+  Registry = self.Instance(::Params::Registry)
+
+  # Templates
+  TemplateMap = Hash|Hash.map(NonNil, Hash.map(Symbol, Strict::Any))
+
+  # Groups
+  GroupMap    = Hash|Hash.map(NonNil, Array|TemplateMap)
+
+
+  # @!endgroup
 end

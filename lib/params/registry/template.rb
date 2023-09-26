@@ -6,6 +6,13 @@ require_relative 'error'
 # This class manages an individual parameter template.
 class Params::Registry::Template
 
+  private
+
+  # this is dumb
+  Types = Params::Registry::Types
+
+  public
+
   # Initialize the template object.
   #
   # @param registry [Params::Registry] A backreference to the
@@ -52,12 +59,13 @@ class Params::Registry::Template
       consumes: nil, preproc: nil, min: 0, max: 1, shift: false,
       empty: false, default: nil, universe: nil, complement: nil,
       unwind: nil, reverse: false
+
     @registry   = Types::Registry[registry]
     @id         = Types::NonNil[id]
     @slug       = Types::Symbol[slug] if slug
     @type       = Types[type]
     @composite  = Types[composite] if composite
-    @format     = (Types::String | Types::Proc)[format] if format
+    @format     = (Types::Proc | Types::String)[format] if format
     @aliases    = Types::Array[aliases]
     @depends    = Types::Array[depends]
     @conflicts  = Types::Array[conflicts]
@@ -156,10 +164,10 @@ class Params::Registry::Template
 
   # @return [Boolean] whether to shift values more than `max`
   #  cardinality off the front.
-  def shift?   ; !!@shift;   end
+  def shift? ; !!@shift; end
 
   # @return [Boolean] whether to accept empty values.
-  def empty?   ; !!@empty;   end
+  def empty? ; !!@empty; end
 
   # @return [Boolean] whether to interpret composite values as reversed.
   def reverse? ; !!@reverse; end
@@ -167,7 +175,7 @@ class Params::Registry::Template
   # @return [Boolean] whether there is a complement
   def complement? ; !!@complement; end
 
-  # Validate a list of individual parameter values and (optionally)
+  # Validate a list of individual parameter values and (if one is present)
   # construct a `composite` value.
   #
   # @param values [Array] the values given for the parameter.
