@@ -22,6 +22,8 @@ RSpec.describe Params::Registry do
       expect(registry[:g1]).to be_a(Params::Registry::Group)
       expect(registry[:g1][:test]).to be_a(Params::Registry::Template)
       expect(registry[nil][:test]).to be_equal(registry[:g1][:test])
+      expect(registry.keys).to eq(%i[g1])
+      expect(registry.groups).to eq([registry[:g1]])
     end
 
     it 'initializes with a group that sets a parameter' do
@@ -35,6 +37,17 @@ RSpec.describe Params::Registry do
         groups: { g1: %i[test] }
 
       expect(registry[:g1][:test]).to be_equal(registry.templates[:test])
+    end
+
+    it 'affords the removal of templates' do
+      registry = Params::Registry.new templates: { test: { slug: :other } },
+        groups: { g1: %i[test] }
+
+      # removing a template also removes it from any groups
+      t = registry.templates.delete :test
+      expect(registry[:g1][:test]).to be_nil
+      # removing it also ensures that it isn't sticking around in aliases
+      expect(registry.templates[:other]).to be_nil
     end
   end
 

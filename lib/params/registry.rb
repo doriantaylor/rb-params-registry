@@ -60,16 +60,25 @@ class Params::Registry
     #
     # @param id [Object] the template identifier, either canonical or an alias.
     #
-    # @return [Params::Registry::Template] the template.
+    # @return [Params::Registry::Template, nil] the template, if one is found.
     #
     def [] id
       @templates[id] || @aliases[id]
     end
 
-    # Assign a template to the main registry.
+    # Add a parameter template to the group. The `spec` can be a
+    # template specification, or it can be an already-instantiated
+    # template, or it can be the same as `id`, or it can be `nil`. In
+    # the first case, the template will be created and added to the
+    # registry, replacing any template with the same ID. In the case
+    # that it's a {Params::Registry::Template} instance, its ID must
+    # match `id` and it must come from the same registry as the
+    # group. In the latter two cases, the parameter is retrieved from
+    # the registry, raising an exception if not.
     #
-    # @param id [Object]
-    # @param template [Hash{Symbol => Object}]
+    # @param id [Object] the template's canonical identifier.
+    # @param spec [Hash{Symbol => Object}, Params::Registry::Template, nil]
+    #  the template specification, as described above.
     #
     # @return [Params::Registry::Template] the new template, assigned to
     #  the registry.
@@ -78,9 +87,14 @@ class Params::Registry
       case spec
       when nil, id
         template = registry.templates[id]
-        raise unless template
+        raise ArgumentError, "Could not find template #{id}" unless template
       when Template
-        raise unless registry.equal? spec.registry
+        raise ArgumentError,
+          "Template #{id} supplied from some other registry" unless
+          registry.equal? spec.registry
+        raise ArgumentError,
+          "Identifier #{id} does not match template (#{spec.id})" unless
+          id == spec.id
         template = spec
       else
         Types::Hash[spec]
@@ -101,12 +115,43 @@ class Params::Registry
       template
     end
 
+    # Delete a template from the group.
+    #
+    # @param id [Object] the canonical identifier for the template, or an alias.
+    #
+    # @return [Params::Registry::Template, nil] the removed template,
+    #  if there was one present to be removed.
+    #
+    def delete id
+      # first we have to find it
+      return unless template = self[id]
+
+      @templates.delete template.id
+      @aliases.delete template.slug if template.slug
+
+      # XXX i feel like we should try to find other parameters that
+      # may have an alias that's the same as the one we just deleted
+      # and give (the first matching one) the now-empty slot, but
+      # that's not urgent so i'll leave it for now.
+      template.aliases.each do |a|
+        @aliases.delete a if template.equal? @aliases[a]
+      end
+
+      # if we are the main registry group we have to do extra stuff
+      if registry.templates.equal? self
+        registry.groups.each { |g| g.delete template.id }
+      end
+
+      # this leaves us with an unbound template
+      template
+    end
+
   end
 
   # Initialize the registry.
   #
   # @param templates [Hash] the hash of template specifications
-  # @param groups [Hash, Array] the hash of groups 
+  # @param groups [Hash, Array] the hash of groups
   # @param complement [Object]
   #
   def initialize templates: nil, groups: nil, complement: nil
@@ -141,6 +186,14 @@ class Params::Registry
     id = Types::NonNil[id]
 
     @groups[id] = Group.new self, id, templates: spec
+  end
+
+  def keys
+    @groups.keys.reject(&:nil?)
+  end
+
+  def groups
+    @groups.values_at(*keys)
   end
 
   def templates
