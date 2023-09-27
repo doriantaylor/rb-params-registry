@@ -78,6 +78,7 @@ class Params::Registry
       case spec
       when nil, id
         template = registry.templates[id]
+        raise unless template
       when Template
         raise unless registry.equal? spec.registry
         template = spec
