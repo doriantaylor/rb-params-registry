@@ -52,7 +52,9 @@ RSpec.describe Params::Registry do
   end
 
   context 'how about actually parsing something' do
+    subject { Params::Registry.new templates: { test: { slug: :other } } }
     it 'generates a simple instance' do
+      expect(subject.process 'test=foo').to be_a Params::Registry::Instance
     end
 
     it 'generates a grouped instance' do

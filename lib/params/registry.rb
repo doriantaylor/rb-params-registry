@@ -3,6 +3,7 @@
 require_relative 'registry/version'
 require_relative 'registry/error'
 require_relative 'registry/template'
+require_relative 'registry/instance'
 
 require 'uri'
 
@@ -15,20 +16,6 @@ require 'uri'
 # a processed, in-memory representation and back.
 #
 class Params::Registry
-
-  # This class represents a parsed instance of a set of parameters. It
-  # is intended to be used like a {::Hash}, and, among other things,
-  # manages the serialization of the parameters back into a normalized
-  # query string.
-  #
-  class Instance
-
-    def initialize registry, struct
-    end
-
-    def to_s
-    end
-  end
 
   # A group is an identifiable sequence of parameters.
   class Group
@@ -142,8 +129,16 @@ class Params::Registry
         registry.groups.each { |g| g.delete template.id }
       end
 
-      # this leaves us with an unbound template
+      # this leaves us with an unbound template which i gueessss we
+      # could reinsert?
       template
+    end
+
+    # Return a suitable representation for debugging.
+    #
+    # @return [String] the object.
+    def inspect
+      "<#{self.class}: #{id} {#{keys.join ', '}}>"
     end
 
   end
@@ -188,17 +183,52 @@ class Params::Registry
     @groups[id] = Group.new self, id, templates: spec
   end
 
+  # Retrieve the names of the groups.
+  #
+  # @return [Array] the group names.
+  #
   def keys
     @groups.keys.reject(&:nil?)
   end
 
+  # Retrieve the groups themselves.
+  #
+  # @return [Array<Params::Registry::Group>] the groups.
+  #
   def groups
     @groups.values_at(*keys)
   end
 
+  # Retrieve the master template group.
+  #
+  # @return [Params::Registry::Group] the master group.
+  #
   def templates
     @groups[nil]
   end
+
+  # Process the parameters and return a {Params::Registry::Instance}.
+  #
+  # @param params
+  #  [String, URI, Hash{#to_sym => Array}, Array<Array<(#to_sym, Object)>>]
+  #  the parameter set, in a dizzying variety of inputs.
+  #
+  # @return [Params::Registry::Instance] the instance.
+  #
+  def process params
+    instance_class.new self, Types::Input[params]
+  end
+
+  # Refresh any stateful elements of the templates.
+  #
+  # @return [void]
+  #
+  def refresh!
+    templates.each { |t| t.refresh! }
+    nil
+  end
+
+  # @!group Quasi-static methods to override in subclasses
 
   # The template class to use. Override this in a subclass if you want
   # to use a custom one.
@@ -227,4 +257,5 @@ class Params::Registry
     Group
   end
 
+  # @!endgroup
 end

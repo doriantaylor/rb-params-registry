@@ -6,6 +6,7 @@ require 'dry-types' # let's try to use this and not hate it
 require 'set'       # for some reason Set is not in the kernel but Range is
 require 'date'      # includes DateTime
 require 'time'      # ruby has Time and DateTime to be confusing
+require 'uri'
 
 # All the type coercions used in {Params::Registry}.
 module Params::Registry::Types
@@ -142,6 +143,22 @@ module Params::Registry::Types
   # Groups
   GroupMap    = Hash|Hash.map(NonNil, Array|TemplateMap)
 
+  Input = self.Constructor(::Hash) do |input|
+    input = input.query.to_s if input.is_a? ::URI
+    input = ::URI.decode_www_form input if input.is_a? ::String
+
+    case input
+    when ::Hash then input
+    when ::Array
+      input.reduce({}) do |out, pair|
+        k, v = pair.take 2
+        (out[k.to_sym] ||= []) << v
+        out
+      end
+    else
+      raise Dry::Types::CoercionError, "not sure what to do with #{input}"
+    end
+  end
 
   # @!endgroup
 end
