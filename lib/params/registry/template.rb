@@ -80,6 +80,7 @@ class Params::Registry::Template
     @complement = Types::Proc[complement] if complement
     @unwind     = Types::Proc[unwind]     if unwind
     @reverse    = Types::Bool[reverse]
+
   end
 
   # @!attribute [r] registry
@@ -104,16 +105,6 @@ class Params::Registry::Template
   # @!attribute [r] aliases
   #  @return [Array<Symbol>] any aliases for this parameter.
   #
-  # @!attribute [r] depends
-  #  @return [Array] any parameters this one depends on.
-  #
-  # @!attribute [r] conflicts
-  #  @return [Array] any parameters this one conflicts with.
-  #
-  # @!attribute [r] consumes
-  #  @return [Array] any parameters this one consumes (implies
-  #   `depends` + `conflicts`).
-  #
   # @!attribute [r] preproc
   #  @return [Proc] a procedure to run over `consume`d parameters.
   #
@@ -126,25 +117,96 @@ class Params::Registry::Template
   # @!attribute [r] default
   #  @return [Object, nil] a default value for the parameter.
   #
-  # @!attribute [r] complement
-  #  @return [Proc, nil] a function that complements a composite value
-  #   (e.g., inverts a set or range).
-  #
   # @!attribute [r] unwind
-  #  @return [Proc, nil] a function that will take a composite object
-  #   and turn it into an array of strings for serialization.
+  # A function that will take a composite object
+  #  and turn it into an array of strings for serialization.
+  # @return [Proc, nil]
 
   attr_reader :registry, :id, :slug, :type, :composite, :format,
-    :aliases, :depends, :conflicts, :consumes, :preproc, :min, :max,
-    :default, :unwind
+    :aliases, :preproc, :min, :max, :default, :unwind
+
+  # @!attribute [r] depends
+  # Any parameters this one depends on.
+  #
+  # @return [Array]
+  #
+  def depends
+    out = (@depends | (@preproc ? @consumes : [])).map do |t|
+      registry.templates.canonical t
+    end
+
+    raise Params::Registry::Error,
+      "Malformed dependency declaration on #{t.id}" if out.any?(&:nil?)
+
+    out
+  end
+
+  # @!attribute [r] conflicts
+  # Any parameters this one conflicts with.
+  #
+  # @return [Array]
+  #
+  def conflicts
+    out = (@conflicts | (@preproc ? @consumes : [])).map do |t|
+      registry.templates.canonical t
+    end
+
+    raise Params::Registry::Error,
+      "Malformed conflict declaration on #{t.id}" if out.any?(&:nil?)
+
+    out
+  end
+
+  # @!attribute [r] consumes
+  # Any parameters this one consumes (implies `depends` + `conflicts`).
+  #
+  # @return [Array]
+  #
+  def consumes
+    out = @consumes.map { |t| registry.templates.canonical t }
+
+    raise Params::Registry::Error,
+      "Malformed consumes declaration on #{t.id}" if out.any?(&:nil?)
+
+    out
+  end
 
   # @!attribute [r] universe
-  #  @return [Object, nil] the universal e.g. set or range from which valid
-  #   values are drawn.
+  # The universal composite object (e.g. set or range) from which
+  #  valid values are drawn.
+  # @return [Object, nil]
   def universe
     refresh! unless @universe
     @universe
   end
+
+  # @!attribute [r] shift?
+  # Whether to shift values more than `max` cardinality off the front.
+  #
+  # @return [Boolean]
+  #
+  def shift? ; !!@shift; end
+
+  # @!attribute [r] empty?
+  # Whether to accept empty values.
+  #
+  # @return [Boolean]
+  #
+  def empty? ; !!@empty; end
+
+  # @!attribute [r] reverse?
+  # Whether to interpret composite values as reversed.
+  #
+  # @return [Boolean]
+  #
+  def reverse? ; !!@reverse; end
+
+  # @!attribute [r] complement?
+  # Whether this (composite) parameter can be complemented or inverted.
+  #
+  # @return [Boolean]
+  #
+  def complement? ; !!@complement; end
 
   # Return the complement of the composite value for the parameter.
   #
@@ -153,6 +215,7 @@ class Params::Registry::Template
   # @return [Object, nil] the complementary object, if a complement is defined.
   #
   def complement value
+    return unless @complement
     begin
       instance_exec value, &@complement
     rescue e
@@ -161,19 +224,6 @@ class Params::Registry::Template
         context: self, value: value)
     end if @complement
   end
-
-  # @return [Boolean] whether to shift values more than `max`
-  #  cardinality off the front.
-  def shift? ; !!@shift; end
-
-  # @return [Boolean] whether to accept empty values.
-  def empty? ; !!@empty; end
-
-  # @return [Boolean] whether to interpret composite values as reversed.
-  def reverse? ; !!@reverse; end
-
-  # @return [Boolean] whether there is a complement
-  def complement? ; !!@complement; end
 
   # Validate a list of individual parameter values and (if one is present)
   # construct a `composite` value.
@@ -288,6 +338,18 @@ class Params::Registry::Template
     end
 
     nil
+  end
+
+  # Return a suitable representation for debugging.
+  #
+  # @return [String] the object.
+  #
+  def inspect
+    c = self.class
+    i = id.inspect
+    t = '%s%s' % [type, composite ? ", #{composite}]" : '']
+
+    "#<#{c} #{i} (#{t})>"
   end
 
 end

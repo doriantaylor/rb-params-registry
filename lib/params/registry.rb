@@ -28,6 +28,7 @@ class Params::Registry
       @registry  = registry
       @templates = {} # main mapping
       @aliases   = {} # alternate mapping
+      @ranks     = {} # internal ranking for dependencies
 
       templates = (Types::Array|Types::TemplateMap)[templates]
 
@@ -99,7 +100,62 @@ class Params::Registry
       # we use a conditional assign here since aliases take a lower priority
       template.aliases.each { |a| @aliases[a] ||= template }
 
+      # now we compute the rank, but first we need the dependencies
+      deps = template.depends.map do |t|
+        registry.templates[t]
+      end.compact.map(&:id)
+
+      # warn deps.inspect
+
+      # XXX this does not do cycles; we should really do cycles.
+      rank = @ranks.values_at(*deps).compact.max
+      @ranks[id] = rank.nil? ? 0 : rank + 1
+
       template
+    end
+
+    # Return whether the group has a given key.
+    #
+    # @return [false, true] what I said.
+    #
+    def key? id
+      !!self[id]
+    end
+
+    # Return the canonical template identifiers.
+    #
+    # @return [Array] the keys.
+    #
+    def keys ; @templates.keys; end
+
+    # Return the canonical identifier for the template.
+    #
+    # @param id [Object] the identifier, canonical or otherwise.
+    #
+    # @return [Object, nil] the canonical identifier, if found.
+    #
+    def canonical id
+      return id if @templates.key? id
+      @aliases[id].id if @aliases.key? id
+    end
+
+    # Return an array of arrays of templates sorted by rank. A higher
+    # rank means a parameter depends on one or more parameters with a
+    # lower rank.
+    #
+    # @return [Array<Hash{Object => Params::Registry::Template}>] the
+    #  ranked parameter templates.
+    #
+    def ranked
+      # warn @ranks.inspect
+
+      out = Array.new((@ranks.values.max || -1) + 1) { {} }
+
+      # warn out.inspect
+
+      @templates.values.each { |t| out[@ranks[t.id]][t.id] = t }
+
+      out
     end
 
     # Delete a template from the group.
@@ -114,6 +170,7 @@ class Params::Registry
       return unless template = self[id]
 
       @templates.delete template.id
+      @ranks.delete template.id
       @aliases.delete template.slug if template.slug
 
       # XXX i feel like we should try to find other parameters that
@@ -137,17 +194,85 @@ class Params::Registry
     # Return a suitable representation for debugging.
     #
     # @return [String] the object.
+    #
     def inspect
-      "<#{self.class}: #{id} {#{keys.join ', '}}>"
+      "#<#{self.class}: #{id} {#{keys.join ', '}}>"
     end
 
   end
 
-  # Initialize the registry.
+  private
+
+  # The complement can be either an identifier or it can be a
+  # (partial) template spec with one additional `:id` member.
+  def coerce_complement complement
+    complement ||= :complement
+    # complement can be a name, or it can be a structure which is
+    # merged with the boilerplate below.
+    if complement.is_a? Hash
+      complement = Types::TemplateSpec[complement]
+      raise ArgumentError, 'Complement hash is missing :id' unless
+        complement.key? :id
+      spec = complement.except :id
+      complement = complement[:id]
+    else
+      spec = {}
+    end
+
+    # for the closures
+    ts = templates
+
+    # we always want these closures so we steamroll over whatever the
+    # user might have put in these slots
+    spec.merge!({
+      composite: Types::Set.constructor { |set|
+        raise Dry::Types::ConstraintError,
+          "#{complement} has values not found in templates" unless
+          set.all? { |t| ts.key? t }
+        set
+      },
+      unwind: -> set {
+        # XXX do we want to sort this lexically or do we want it in
+        # the same order as the keys?
+        set.to_a.map { |t| t = ts[t]; (t.slug || t.id).to_s }.sort
+      }
+    })
+
+    [complement, spec]
+  end
+
+  public
+
+  # Initialize the registry. You will need to supply a set of specs
+  # that will become {::Params::Registry::Template} objects. You can
+  # also supply groups which you can use how you like.
   #
-  # @param templates [Hash] the hash of template specifications
-  # @param groups [Hash, Array] the hash of groups
-  # @param complement [Object]
+  # Parameters can be defined within groups or separately from them.
+  # This allows subsets of parameters to be easily hived off from the
+  # main {Params::Registry::Instance}.
+  #
+  # There is a special meta-parameter `:complement` which takes as its
+  # values the names of other parameters. This is intended to be used
+  # to signal that the parameters so named, assumed to be some kind of
+  # composite, like a {::Set} or {::Range}, are to be complemented or
+  # negated. The purpose of this is, for instance, if you want to
+  # express a parameter that is a set with many values, and rather
+  # than having to enumerate each of the values in something like a
+  # query string, you only have to enumerate the values you *don't*
+  # want in the set.
+  #
+  # @note The complement parameter is always set (last), and its
+  #  identifier defaults, unsurprisingly, to `:complement`. This can
+  #  be overridden by specifying an identifier you prefer. If you want
+  #  a slug that is distinct from the canonical identifier, or if you
+  #  want aliases, pass in a spec like this: `{ id:
+  #  URI('https://my.schema/parameters#complement'), slug:
+  #  :complement, aliases: %i[invert negate] }`
+  #
+  # @param templates [Hash] the hash of template specifications.
+  # @param groups [Hash, Array] the hash of groups.
+  # @param complement [Object, Hash] the identifier for the parameter
+  #  for complementing composites, or otherwise a partial specification.
   #
   def initialize templates: nil, groups: nil, complement: nil
     # initialize the object state with an empty default group
@@ -162,6 +287,11 @@ class Params::Registry
 
     # now load groups
     groups.each { |id, specs| self[id] = specs }
+
+    # now deal with complement
+    cname, cspec = coerce_complement complement
+    self.templates[cname] = cspec
+    @complement = cname
   end
 
   # Retrieve a group.
@@ -204,6 +334,7 @@ class Params::Registry
   # @return [Params::Registry::Group] the master group.
   #
   def templates
+    # XXX is this dumb? would it be better off as its own member?
     @groups[nil]
   end
 

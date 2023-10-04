@@ -8,20 +8,100 @@ require_relative 'types'
 # query string.
 #
 class Params::Registry::Instance
+
   private
 
+  # i wish it was smart and would just resolve relative class names
   Types = Params::Registry::Types
 
   public
 
+  attr_reader :registry
+
   # Make a new instance.
   #
   # @param registry [Params::Registry] the registry
-
   # @param struct [Hash{Symbol => Array<String>}] something that
   #  resembles the output of `URI.decode_www_form`.
   #
-  def initialize registry, struct, extra = nil
+  def initialize registry, struct, defaults: false, force: false
+    struct    = Types::Input[struct]
+    @registry = registry
+    @content  = {}
+    @extra    = {}
+
+    # let's get a mapping of the input we have to canonical identifiers
+    mapping = struct.keys.reduce({}) do |hash, key|
+      if t = registry.templates[key]
+        hash[t.id] = key
+      else
+        # may as well designate the extras
+        extra[key] = struct[key]
+      end
+
+      hash
+    end
+
+    # warn mapping.inspect
+
+    errors = {} # collect errors so we only raise once at the end
+    del = Set[] # mark for deletion
+
+    # warn registry.templates.ranked.inspect
+
+    # now we get the ranked templates and pass them through
+    registry.templates.ranked.each do |templates|
+      # give me the intersection of templates
+      templates.values.each do |t|
+        # warn t.id
+
+        # obtain the raw values
+        raw = mapping.key?(t.id) ? struct[mapping[t.id]] : []
+
+        # warn @content.inspect
+
+        # run the preprocessor
+        if t.preproc and t.consumes.all? { |k| @content.key? k }
+          others = @content.values_at(*t.consumes)
+          begin
+            tmp = t.preproc.call others
+            tmp = [tmp] unless tmp.is_a? Array
+            raw = tmp
+            del += t.consumes
+          rescue Params::Registry::Error => e
+            errors[t.id] = e
+          end
+        end
+
+        # if this actually goes here then there's a bug in the perl one
+        next if raw.empty? and not force
+
+        # now we use the template to process it
+        begin
+          tmp = t.process(*raw)
+          # warn "#{t.id} => #{tmp.inspect}"
+          @content[t.id] = tmp if !tmp.nil? or t.empty?
+        rescue Params::Registry::Error => e
+          errors[t.id] = e
+        end
+
+        # now we test for conflicts
+        if !errors.key?(t.id) and !t.conflicts.empty?
+          conflicts = @content.keys & t.conflicts - del.to_a
+          errors[t.id] = Params::Registry::Error.new "" unless conflicts.empty?
+        end
+
+        # now we handle the complement
+      end
+    end
+
+    # raise any errors if we need to
+    raise Params::Registry::Error::Processing.new(
+      'One or more parameters failed to process', errors: errors) unless
+      errors.empty?
+
+    # delete the unwanted parameters
+    del.each { |d| @content.delete d }
   end
 
   # Retrieve the processed value for a parameter.
@@ -32,6 +112,8 @@ class Params::Registry::Instance
   # @return [Object, Array, nil] the value, if present.
   #
   def [] param
+    param = @registry.templates.canonical(param) or return
+    @content[param]
   end
 
   # Assign a new value to a key. The new value will be tested

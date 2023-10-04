@@ -52,7 +52,30 @@ RSpec.describe Params::Registry do
   end
 
   context 'how about actually parsing something' do
-    subject { Params::Registry.new templates: { test: { slug: :other } } }
+    subject do
+      Params::Registry.new templates: {
+        year: {
+          type: Params::Registry::Types::Integer,
+          max: 1,
+        },
+        month: {
+          type: Params::Registry::Types::Integer.constrained(gt: 0, lteq: 12),
+          max: 1,
+        },
+        day: {
+          type: Params::Registry::Types::Integer.constrained(gt: 0, lteq: 31),
+          max: 1,
+        },
+        date: {
+          type: Params::Registry::Types::Date,
+          consumes: %i[year month day],
+          preproc: -> others { '%04d-%02d-%02d' % others },
+        },
+        test: {
+        },
+      }
+    end
+
     it 'generates a simple instance' do
       expect(subject.process 'test=foo').to be_a Params::Registry::Instance
     end
@@ -68,23 +91,9 @@ RSpec.describe Params::Registry do
 
     # note: "complex" is distinct from "composite"
     it 'consumes elementary parameters to construct complex ones' do
-      registry = Params::Registry.new templates: {
-        year: {
-          type: Params::Registry::Types::Integer,
-        },
-        month: {
-          type: Params::Registry::Types::Integer.constrained(gt: 0, lteq: 12),
-        },
-        day: {
-          type: Params::Registry::Types::Integer.constrained(gt: 0, lteq: 31),
-        },
-        date: {
-          type: Params::Registry::Types::Date,
-          consumes: %i[year month day],
-          preproc: -> others { '%04d-%02d-%02d' % others },
-        },
-      }
-
+      instance = subject.process 'year=2023&month=10&day=04'
+      expect(instance[:date]).to be_a Date
+      expect(instance[:year]).to be_nil
     end
   end
 end

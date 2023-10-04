@@ -138,21 +138,24 @@ module Params::Registry::Types
   Registry = self.Instance(::Params::Registry)
 
   # Templates
-  TemplateMap = Hash|Hash.map(NonNil, Hash.map(Symbol, Strict::Any))
+
+  TemplateSpec = Hash.map(Symbol, Strict::Any)
+
+  TemplateMap = Hash|Hash.map(NonNil, TemplateSpec)
 
   # Groups
-  GroupMap    = Hash|Hash.map(NonNil, Array|TemplateMap)
+  GroupMap = Hash|Hash.map(NonNil, Array|TemplateMap)
 
   Input = self.Constructor(::Hash) do |input|
     input = input.query.to_s if input.is_a? ::URI
     input = ::URI.decode_www_form input if input.is_a? ::String
 
     case input
-    when ::Hash then input
+    when ::Hash then Hash.map(Symbol, Array.of(String))[input]
     when ::Array
       input.reduce({}) do |out, pair|
-        k, v = pair.take 2
-        (out[k.to_sym] ||= []) << v
+        k, *v = Strict::Array.constrained(min_size: 2)[pair]
+        (out[k.to_sym] ||= []).push(*v)
         out
       end
     else
