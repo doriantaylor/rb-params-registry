@@ -239,7 +239,7 @@ class Params::Registry
       unwind: -> set {
         # XXX do we want to sort this lexically or do we want it in
         # the same order as the keys?
-        set.to_a.map { |t| t = ts[t]; (t.slug || t.id).to_s }.sort
+        [set.to_a.map { |t| t = ts[t]; (t.slug || t.id).to_s }.sort, false]
       }
     })
 
@@ -295,7 +295,7 @@ class Params::Registry
 
     # now deal with complement
     cid, cspec = coerce_complement complement
-    wtf = (self.templates[cid] = cspec) # XXX note leaky abstraction
+    self.templates[cid] = cspec # XXX note leaky abstraction
     # warn wtf.inspect
     @complement = self.templates[cid]
   end

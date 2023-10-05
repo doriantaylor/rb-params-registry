@@ -99,9 +99,6 @@ class Params::Registry::Template
   # @!attribute [r] composite
   #  @return [Dry::Types::Type, nil] the type for composite values.
   #
-  # @!attribute [r] format
-  #  @return [String, Proc, nil] the format string or procedure.
-  #
   # @!attribute [r] aliases
   #  @return [Array<Symbol>] any aliases for this parameter.
   #
@@ -122,8 +119,8 @@ class Params::Registry::Template
   #  and turn it into an array of strings for serialization.
   # @return [Proc, nil]
 
-  attr_reader :registry, :id, :slug, :type, :composite, :format,
-    :aliases, :preproc, :min, :max, :default, :unwind
+  attr_reader :registry, :id, :slug, :type, :composite, :aliases,
+    :preproc, :min, :max, :default, :unwind
 
   # @!attribute [r] depends
   # Any parameters this one depends on.
@@ -237,6 +234,22 @@ class Params::Registry::Template
     out
   end
 
+  # Format an individual atomic value.
+  #
+  # @param scalar [Object] the scalar/atomic value.
+  #
+  # @return [String] serialized to a string.
+  #
+  def format scalar
+    return scalar.to_s unless @format
+
+    if @format.is_a? Proc
+      instance_exec scalar, &@format
+    else
+      @format.to_s % scalar
+    end
+  end
+
   # Return the complement of the composite value for the parameter.
   #
   # @param value [Object] the composite object to complement.
@@ -335,19 +348,19 @@ class Params::Registry::Template
     # complement flag
     comp = false
     begin
-      tmp, comp = instance_exec value, *rest, &unwind
+      tmp, comp = instance_exec value, *rest, &@unwind
       value = tmp
     rescue Exception, e
       raise Params::Registry::Error::Empirical.new(
         "Cannot unprocess value #{value} for parameter #{id}: #{e.message}",
         context: self, value: value)
-    end if unwind
+    end if @unwind
 
     # ensure this thing is an array
     value = [value] unless value.is_a? Array
 
     # ensure the values are correctly formatted
-    value.map! { |v| v.nil? ? '' : instance_exec(v, &format) }
+    value.map! { |v| v.nil? ? '' : self.format(v) }
 
     # throw in the complement flag
     return value, comp if with_complement_flag

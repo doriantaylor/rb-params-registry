@@ -78,7 +78,9 @@ RSpec.describe Params::Registry do
     end
 
     it 'generates a simple instance' do
-      expect(subject.process 'test=foo').to be_a Params::Registry::Instance
+      instance = subject.process 'test=foo'
+      warn instance.to_s
+      expect(instance).to be_a Params::Registry::Instance
     end
 
     it 'generates a grouped instance' do
@@ -93,6 +95,7 @@ RSpec.describe Params::Registry do
     # note: "complex" is distinct from "composite"
     it 'consumes elementary parameters to construct complex ones' do
       instance = subject.process 'year=2023&month=10&day=04'
+      warn instance.to_s
       expect(instance[:date]).to be_a Date # should be single coerced value
       expect(instance[:year]).to be_nil # consumed parameters should be gone
     end

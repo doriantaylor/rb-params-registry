@@ -15,8 +15,8 @@ class Params::Registry::Instance
   Types = Params::Registry::Types
 
   # This is the epitome of an internal method. It has weird
-  # parameters, modifies state, and returns an otherwise useless
-  # value.
+  # parameters, modifies state, and returns a value that is useless
+  # for anything but subsequent internal processing.
   def process_one template, values, complement: false, force: false
     del = Set[]
 
@@ -191,5 +191,20 @@ class Params::Registry::Instance
   # @return [String] the instance serialized as a URI query string.
   #
   def to_s
+    ts = registry.templates
+    sequence = ts.keys & @content.keys
+    complements = Set[]
+    sequence.map do |k|
+      template = ts[k]
+      deps = @content.values_at(*(template.depends - template.consumes))
+      v, c = template.unprocess @content[k], *deps, with_complement_flag: true
+      complements << k if c
+
+      # warn @content[k], v.inspect
+
+      next if v.empty?
+
+      v.map { |v| "#{template.slug || k}=#{v}" }.join ?&
+    end.compact.join ?&
   end
 end
