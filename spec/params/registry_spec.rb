@@ -68,8 +68,9 @@ RSpec.describe Params::Registry do
         },
         date: {
           type: Params::Registry::Types::Date,
+          max: 1,
           consumes: %i[year month day],
-          preproc: -> others { '%04d-%02d-%02d' % others },
+          preproc: -> _, others { '%04d-%02d-%02d' % others },
         },
         test: {
         },
@@ -92,8 +93,12 @@ RSpec.describe Params::Registry do
     # note: "complex" is distinct from "composite"
     it 'consumes elementary parameters to construct complex ones' do
       instance = subject.process 'year=2023&month=10&day=04'
-      expect(instance[:date]).to be_a Date
-      expect(instance[:year]).to be_nil
+      expect(instance[:date]).to be_a Date # should be single coerced value
+      expect(instance[:year]).to be_nil # consumed parameters should be gone
+    end
+
+    it 'handles its complement correctly' do
+      expect(subject.complement).to be
     end
   end
 end

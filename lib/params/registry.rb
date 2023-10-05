@@ -111,6 +111,7 @@ class Params::Registry
       rank = @ranks.values_at(*deps).compact.max
       @ranks[id] = rank.nil? ? 0 : rank + 1
 
+      # warn template.id
       template
     end
 
@@ -153,7 +154,10 @@ class Params::Registry
 
       # warn out.inspect
 
-      @templates.values.each { |t| out[@ranks[t.id]][t.id] = t }
+      @templates.values.reject do |t|
+        # skip the complement as it's handled out of band
+        t.equal? registry.complement
+      end.each { |t| out[@ranks[t.id]][t.id] = t }
 
       out
     end
@@ -226,10 +230,11 @@ class Params::Registry
     # user might have put in these slots
     spec.merge!({
       composite: Types::Set.constructor { |set|
+        # warn "heyooo #{set.inspect}"
         raise Dry::Types::ConstraintError,
           "#{complement} has values not found in templates" unless
-          set.all? { |t| ts.key? t }
-        set
+            set.all? { |t| ts.select { |_, x| x.complement? }.key? t }
+        Set[*set]
       },
       unwind: -> set {
         # XXX do we want to sort this lexically or do we want it in
@@ -289,10 +294,16 @@ class Params::Registry
     groups.each { |id, specs| self[id] = specs }
 
     # now deal with complement
-    cname, cspec = coerce_complement complement
-    self.templates[cname] = cspec
-    @complement = cname
+    cid, cspec = coerce_complement complement
+    wtf = (self.templates[cid] = cspec) # XXX note leaky abstraction
+    # warn wtf.inspect
+    @complement = self.templates[cid]
   end
+
+  # @!attribute [r] complement
+  # The `complement` template.
+  # @return [Params::Registry::Template]
+  attr_reader :complement
 
   # Retrieve a group.
   #

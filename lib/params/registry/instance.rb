@@ -14,6 +14,44 @@ class Params::Registry::Instance
   # i wish it was smart and would just resolve relative class names
   Types = Params::Registry::Types
 
+  # This is the epitome of an internal method. It has weird
+  # parameters, modifies state, and returns an otherwise useless
+  # value.
+  def process_one template, values, complement: false, force: false
+    del = Set[]
+
+    # run the preprocessor
+    if template.preproc? and template.consumes.all? { |k| @content.key? k }
+      others = @content.values_at(*template.consumes)
+
+      # XXX maybe we should
+      values = template.preproc values, others
+      del += template.consumes
+    end
+
+    # if this actually goes here then there's a bug in the perl one
+    return del if values.empty? and not force
+
+    # now we use the template to process it (note this raises)
+    tmp = template.process(*values)
+    @content[template.id] = tmp if !tmp.nil? or template.empty?
+
+    # now we test for conflicts
+    tc = template.conflicts - template.consumes - del.to_a
+    unless tc.empty?
+      conflicts = @content.keys & tc
+      raise Params::Registry::Error::Conflict.new(
+        "Parameter #{template.id} conflicts with #{conflicts.join(', ')}"
+      ) unless conflicts.empty?
+    end
+
+    # now we handle the complement
+    @content[template.id] = template.complement(@content[template.id]) if
+      complement and template.complement?
+
+    del # the keys slated for deletion
+  end
+
   public
 
   attr_reader :registry
@@ -30,68 +68,47 @@ class Params::Registry::Instance
     @content  = {}
     @extra    = {}
 
-    # let's get a mapping of the input we have to canonical identifiers
-    mapping = struct.keys.reduce({}) do |hash, key|
+    # canonicalize the keys of the struct
+    struct = struct.reduce({}) do |hash, pair|
+      key, value = pair
       if t = registry.templates[key]
-        hash[t.id] = key
+        hash[t.id] = value
       else
-        # may as well designate the extras
-        extra[key] = struct[key]
+        extra[key] = value
       end
 
       hash
     end
 
-    # warn mapping.inspect
-
     errors = {} # collect errors so we only raise once at the end
     del = Set[] # mark for deletion
 
+    # grab the complements now
+    complements = @content[registry.complement.id] =
+      registry.complement.process(*struct.fetch(registry.complement.id, []))
+
     # warn registry.templates.ranked.inspect
+
+    # warn complements.class
 
     # now we get the ranked templates and pass them through
     registry.templates.ranked.each do |templates|
       # give me the intersection of templates
       templates.values.each do |t|
+
         # warn t.id
 
-        # obtain the raw values
-        raw = mapping.key?(t.id) ? struct[mapping[t.id]] : []
+        # obtain the raw values or an empty array instead
+        raw = struct.fetch t.id, []
 
-        # warn @content.inspect
+        c = complements.include? t.id
 
-        # run the preprocessor
-        if t.preproc and t.consumes.all? { |k| @content.key? k }
-          others = @content.values_at(*t.consumes)
-          begin
-            tmp = t.preproc.call others
-            tmp = [tmp] unless tmp.is_a? Array
-            raw = tmp
-            del += t.consumes
-          rescue Params::Registry::Error => e
-            errors[t.id] = e
-          end
-        end
-
-        # if this actually goes here then there's a bug in the perl one
-        next if raw.empty? and not force
-
-        # now we use the template to process it
         begin
-          tmp = t.process(*raw)
-          # warn "#{t.id} => #{tmp.inspect}"
-          @content[t.id] = tmp if !tmp.nil? or t.empty?
+          del += process_one t, raw, force: force, complement: c
         rescue Params::Registry::Error => e
           errors[t.id] = e
         end
 
-        # now we test for conflicts
-        if !errors.key?(t.id) and !t.conflicts.empty?
-          conflicts = @content.keys & t.conflicts - del.to_a
-          errors[t.id] = Params::Registry::Error.new "" unless conflicts.empty?
-        end
-
-        # now we handle the complement
       end
     end
 
@@ -112,7 +129,7 @@ class Params::Registry::Instance
   # @return [Object, Array, nil] the value, if present.
   #
   def [] param
-    param = @registry.templates.canonical(param) or return
+    param = @registry.templates.canonical(param) or return @extra[param]
     @content[param]
   end
 
@@ -130,6 +147,21 @@ class Params::Registry::Instance
   #  parameter.
   #
   def []= param, value
+    unless template = registry.templates[param]
+      value = value.respond_to?(:to_a) ? value.to_a : value
+      return @extras[param] = value
+    end
+
+    # XXX do something less dumb about this
+    c = (@content[registry.complement.id] || Set[]).include? template.id
+
+    # this modifies @content and may raise
+    del = process_one template, value, force: true, complement: c
+
+    del.each { |d| @content.delete d }
+
+    # return
+    @content[template.id]
   end
 
   # Taxidermy this object as an ordinary hash.
@@ -137,6 +169,8 @@ class Params::Registry::Instance
   # @return [Hash] basically the same thing, minus its metadata.
   #
   def to_h
+    # XXX maybe enforce the ordering better??
+    @content.merge @extra
   end
 
   # Retrieve an {Params::Registry::Instance} that isolates the

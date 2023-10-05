@@ -56,7 +56,7 @@ class Params::Registry::Template
   #
   def initialize registry, id, slug: nil, type: Types::NormalizedString,
       composite: nil, format: nil, aliases: nil, depends: nil, conflicts: nil,
-      consumes: nil, preproc: nil, min: 0, max: 1, shift: false,
+      consumes: nil, preproc: nil, min: 0, max: nil, shift: false,
       empty: false, default: nil, universe: nil, complement: nil,
       unwind: nil, reverse: false
 
@@ -157,6 +157,13 @@ class Params::Registry::Template
     out
   end
 
+  # @!attribute [r] preproc?
+  # Whether there is a preprocessor function.
+  #
+  # @return [Boolean]
+  #
+  def preproc? ; !!@preproc ; end
+
   # @!attribute [r] consumes
   # Any parameters this one consumes (implies `depends` + `conflicts`).
   #
@@ -208,6 +215,28 @@ class Params::Registry::Template
   #
   def complement? ; !!@complement; end
 
+  # Preprocess a parameter value against itself and/or `consume`d values.
+  #
+  # @param myself [Array] raw values for the parameter itself.
+  # @param others [Array] *processed* values for the consumed parameters.
+  #
+  # @return [Array] pseudo-raw, preprocessed values for the parameter.
+  #
+  def preproc myself, others
+    begin
+      # run preproc in the context of the template
+      out = instance_exec myself, others, &@preproc
+      out = [out] unless out.is_a? Array
+    rescue Dry::Types::CoercionError => e
+      # rethrow a better error
+      raise Params::Registry::Error.new(
+        "Preprocessor failed on #{template.id} with #{}",
+        context: self, value: e)
+    end
+
+    out
+  end
+
   # Return the complement of the composite value for the parameter.
   #
   # @param value [Object] the composite object to complement.
@@ -246,7 +275,7 @@ class Params::Registry::Template
         begin
           tmp = type[v] # this either crashes or it doesn't
           v = tmp # in which case v is only assigned if successful
-        rescue Dry::Types::Error => e
+        rescue Dry::Types::CoercionError => e
           raise Params::Registry::Error::Syntax.new e.message,
             context: self, value: v
         end
@@ -260,9 +289,12 @@ class Params::Registry::Template
       "Need #{min} values and there are only #{out.length} values") if
       out.length < min
 
-    if max
-      return out.first if max == 1
+    # warn "hurr #{out.inspect}, #{max}"
 
+    if max
+      # return if it's supposed to be a scalar value
+      return out.first if max == 1
+      # cut the values to length from either the front or back
       out.slice!((shift? ? -max : 0), max) if out.length > max
     end
 
