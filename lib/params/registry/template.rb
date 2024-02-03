@@ -11,6 +11,13 @@ class Params::Registry::Template
   # this is dumb
   Types = Params::Registry::Types
 
+  # Post-initialization hook for subclasses, because the constructor
+  # is so hairy.
+  #
+  # @return [void]
+  #
+  def post_init; end
+
   public
 
   # Initialize the template object.
@@ -81,6 +88,8 @@ class Params::Registry::Template
     @unwind     = Types::Proc[unwind]     if unwind
     @reverse    = Types::Bool[reverse]
 
+    # post-initialization hook
+    post_init
   end
 
   # @!attribute [r] registry
@@ -211,6 +220,18 @@ class Params::Registry::Template
   # @return [Boolean]
   #
   def complement? ; !!@complement; end
+
+  # @!attribute [r] blank?
+  # Returns true if the template has no configuration data to speak of.
+  # @return [Boolean]
+  def blank?
+    # XXX PHEWWW
+    @slug.nil? && @type == Types::NormalizedString && @composite.nil? &&
+      @format.nil? && @aliases.empty? && @depends.empty? &&
+      @conflicts.empty? && @consumes.empty? && @preproc.nil? &&
+      @min == 0 && @max.nil? && !@shift && !@empty && @default.nil? &&
+      @unifunc.nil? && @complement.nil? && @unwind.nil? && !@reverse
+  end
 
   # Preprocess a parameter value against itself and/or `consume`d values.
   #
