@@ -129,6 +129,12 @@ class Params::Registry
     #
     def keys ; @templates.keys; end
 
+    # Return the template entries, in order.
+    #
+    # @return [Array<Params::Registry::Template>] the templates.
+    #
+    def templates ; @templates.values; end
+
     # Return the canonical identifier for the template.
     #
     # @param id [Object] the identifier, canonical or otherwise.

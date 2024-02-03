@@ -48,18 +48,18 @@ module Params::Registry::Types
   # The problem with Kernel.Integer is that if a string representing
   # a number begins with a zero it's treated as octal, so we have to
   # compensate for that.
-  Base10Integer = Nominal::Integer.constructor do |i|
+  DecimalInteger = Nominal::Integer.constructor do |i|
     i.is_a?(::Numeric) ? i.to_i : ::Kernel.Integer(i.to_s, 10)
   end
 
   # `xsd:nonPositiveInteger`
-  NonPositiveInteger = Base10Integer.constrained lteq: 0
+  NonPositiveInteger = DecimalInteger.constrained lteq: 0
   # `xsd:nonNegativeInteger`
-  NonNegativeInteger = Base10Integer.constrained gteq: 0
+  NonNegativeInteger = DecimalInteger.constrained gteq: 0
   # `xsd:positiveInteger`
-  PositiveInteger    = Base10Integer.constrained gt: 0
+  PositiveInteger    = DecimalInteger.constrained gt: 0
   # `xsd:negativeInteger`
-  NegativeInteger    = Base10Integer.constrained lt: 0
+  NegativeInteger    = DecimalInteger.constrained lt: 0
 
   # @!group Stringy stuff, à la XSD plus some others
 
@@ -121,7 +121,7 @@ module Params::Registry::Types
   Time = self.Constructor(::Time) do |x|
     case x
     when ::Array then ::Time.new(*x)
-    when (Base10Integer[x] rescue nil) then ::Time.at(Base10Integer[x])
+    when (DecimalInteger[x] rescue nil) then ::Time.at(DecimalInteger[x])
     else ::Time.parse x
     end
   end
