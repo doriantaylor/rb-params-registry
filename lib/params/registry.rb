@@ -327,7 +327,7 @@ class Params::Registry
     # the null id is special; you can't assign to it
     id = Types::NonNil[id]
 
-    @groups[id] = Group.new self, id, templates: spec
+    @groups[id] = group_class.new self, id, templates: spec
   end
 
   # Retrieve the names of the groups.
