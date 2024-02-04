@@ -63,15 +63,21 @@ class Params::Registry::Instance
   #  resembles the output of `URI.decode_www_form`.
   #
   def initialize registry, struct, defaults: false, force: false
-    struct    = Types::Input[struct]
-    @registry = registry
+    if registry.is_a? Params::Registry::Group
+      @group    = registry
+      @registry = registry.registry
+    else
+      @group    = nil
+      @registry = registry
+    end
+
     @content  = {}
     @extra    = {}
 
     # canonicalize the keys of the struct
-    struct = struct.reduce({}) do |hash, pair|
+    struct = Types::Input[struct].reduce({}) do |hash, pair|
       key, value = pair
-      if t = registry.templates[key]
+      if t = registry[@group][key]
         hash[t.id] = value
       else
         extra[key] = value
@@ -92,7 +98,7 @@ class Params::Registry::Instance
     # warn complements.class
 
     # now we get the ranked templates and pass them through
-    registry.templates.ranked.each do |templates|
+    registry[@group].ranked.each do |templates|
       # give me the intersection of templates
       templates.values.each do |t|
 

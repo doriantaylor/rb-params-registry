@@ -89,7 +89,7 @@ class Params::Registry
         template = registry.template_class.new registry, id, **spec
       end
 
-      # amke sure we aren't calling ourselves
+      # make sure we aren't calling ourselves
       registry.templates[id] = template unless registry.templates.equal? self
 
       # okay now actually assign
@@ -207,6 +207,18 @@ class Params::Registry
     #
     def inspect
       "#<#{self.class}: #{id} {#{keys.join ', '}}>"
+    end
+
+    # Process the parameters and return a {Params::Registry::Instance}.
+    #
+    # @param params
+    #  [String, URI, Hash{#to_sym => Array}, Array<Array<(#to_sym, Object)>>]
+    #  the parameter set, in a dizzying variety of inputs.
+    #
+    # @return [Params::Registry::Instance] the instance.
+    #
+    def process params
+      registry.instance_class.new self, Types::Input[params]
     end
 
   end
