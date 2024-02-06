@@ -172,11 +172,24 @@ class Params::Registry::Instance
 
   # Taxidermy this object as an ordinary hash.
   #
+  # @param slugs [true, false] whether to use slugs versus canonical keys.
+  # @param extra [false, true] whether to include the "extra" parameters.
+  #
   # @return [Hash] basically the same thing, minus its metadata.
   #
-  def to_h
+  def to_h slugs: true, extra: false
+    # we're gonna do damage, lol
+    out = @content.dup
+
+    # this should work?
+    out.transform_keys! do |k|
+      registry[@group][k].slug || k.to_s.to_sym
+    end if slugs
+
     # XXX maybe enforce the ordering better??
-    @content.merge @extra
+    out.merge! @extra if extra
+
+    out
   end
 
   # Retrieve an {Params::Registry::Instance} that isolates the

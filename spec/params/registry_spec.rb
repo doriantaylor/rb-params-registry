@@ -73,13 +73,15 @@ RSpec.describe Params::Registry do
           preproc: -> _, others { '%04d-%02d-%02d' % others },
         },
         test: {
+          slug: :slug,
+          max: 1,
         },
       }
     end
 
     it 'generates a simple instance' do
       instance = subject.process 'test=foo'
-      warn instance.to_s
+      # warn instance.to_s
       expect(instance).to be_a Params::Registry::Instance
     end
 
@@ -94,10 +96,11 @@ RSpec.describe Params::Registry do
 
     # note: "complex" is distinct from "composite"
     it 'consumes elementary parameters to construct complex ones' do
-      instance = subject.process 'year=2023&month=10&day=04'
-      warn instance.to_s
+      instance = subject.process 'year=2023&month=10&day=04&test=hi'
+      # warn instance.to_s
       expect(instance[:date]).to be_a Date # should be single coerced value
       expect(instance[:year]).to be_nil # consumed parameters should be gone
+      expect(instance.to_h(slugs: true)[:slug]).to eq('hi')
     end
 
     it 'handles its complement correctly' do
