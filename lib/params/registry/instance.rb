@@ -64,8 +64,8 @@ class Params::Registry::Instance
   #
   def initialize registry, struct, defaults: false, force: false
     if registry.is_a? Params::Registry::Group
-      @group    = registry
-      @registry = registry.registry
+      @group    = registry.id
+      @registry = registry = registry.registry
     else
       @group    = nil
       @registry = registry
@@ -74,13 +74,17 @@ class Params::Registry::Instance
     @content  = {}
     @extra    = {}
 
+    warn "wtf lol #{@registry[@group].inspect}"
+
     # canonicalize the keys of the struct
     struct = Types::Input[struct].reduce({}) do |hash, pair|
       key, value = pair
-      if t = registry[@group][key]
+      if t = @registry[@group][key]
+        warn "yep #{key.inspect}"
         hash[t.id] = value
       else
-        extra[key] = value
+        warn "nope #{key.inspect}"
+        @extra[key] = value
       end
 
       hash
@@ -90,15 +94,15 @@ class Params::Registry::Instance
     del = Set[] # mark for deletion
 
     # grab the complements now
-    complements = @content[registry.complement.id] =
-      registry.complement.process(*struct.fetch(registry.complement.id, []))
+    complements = @content[@registry.complement.id] =
+      @registry.complement.process(*struct.fetch(@registry.complement.id, []))
 
     # warn registry.templates.ranked.inspect
 
     # warn complements.class
 
     # now we get the ranked templates and pass them through
-    registry[@group].ranked.each do |templates|
+    @registry[@group].ranked.each do |templates|
       # give me the intersection of templates
       templates.values.each do |t|
 

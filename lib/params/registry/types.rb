@@ -102,6 +102,15 @@ module Params::Registry::Types
     s.to_s.upcase.to_sym
   end
 
+  # This one is symbol-*ish*
+  Symbolish = self.Constructor(::Object) do |x|
+    if [::String, ::Symbol].any? { |c| x.is_a? c }
+      Symbol[x]
+    else
+      x
+    end
+  end
+
   # @!group Dates & Times
 
   # Ye olde {::Date}
@@ -151,15 +160,16 @@ module Params::Registry::Types
     input = ::URI.decode_www_form input if input.is_a? ::String
 
     case input
-    when ::Hash then Hash.map(Symbol, Array.of(String))[input]
+    when ::Hash then Hash.map(Symbolish, Array.of(String))[input]
     when ::Array
       input.reduce({}) do |out, pair|
         k, *v = Strict::Array.constrained(min_size: 2)[pair]
-        (out[k.to_sym] ||= []).push(*v)
+        (out[Symbolish[k]] ||= []).push(*v)
         out
       end
     else
-      raise Dry::Types::CoercionError, "not sure what to do with #{input}"
+      raise Dry::Types::CoercionError,
+        "not sure what to do with #{input.inspect}"
     end
   end
 
