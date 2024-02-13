@@ -74,16 +74,16 @@ class Params::Registry::Instance
     @content  = {}
     @extra    = {}
 
-    warn "wtf lol #{@registry[@group].inspect}"
+    # warn "wtf lol #{@registry[@group].inspect}"
 
     # canonicalize the keys of the struct
     struct = Types::Input[struct].reduce({}) do |hash, pair|
       key, value = pair
       if t = @registry[@group][key]
-        warn "yep #{key.inspect}"
+        # warn "yep #{key.inspect}"
         hash[t.id] = value
       else
-        warn "nope #{key.inspect}"
+        # warn "nope #{key.inspect}"
         @extra[key] = value
       end
 
@@ -182,13 +182,15 @@ class Params::Registry::Instance
   # @return [Hash] basically the same thing, minus its metadata.
   #
   def to_h slugs: true, extra: false
-    # we're gonna do damage, lol
-    out = @content.dup
+    g = registry[@group]
 
-    # this should work?
-    out.transform_keys! do |k|
-      registry[@group][k].slug || k.to_s.to_sym
-    end if slugs
+    out = {}
+
+    g.templates.each do |t|
+      next unless @content.key? t.id
+      key = slugs ? t.slug || t.id.to_s.to_sym : t.id
+      out[key] = @content[t.id]
+    end
 
     # XXX maybe enforce the ordering better??
     out.merge! @extra if extra
@@ -196,18 +198,18 @@ class Params::Registry::Instance
     out
   end
 
-  # Retrieve an {Params::Registry::Instance} that isolates the
-  # intersection of one or more groups
-  #
-  # @param group [Object] the group identifier.
-  # @param extra [false, true] whether to include any "extra" unparsed
-  #  parameters.
-  #
-  # @return [Params::Registry::Instance] an instance containing just
-  #  the group(s) identified.
-  #
-  def group *group, extra: false
-  end
+  # # Retrieve an {Params::Registry::Instance} that isolates the
+  # # intersection of one or more groups
+  # #
+  # # @param group [Object] the group identifier.
+  # # @param extra [false, true] whether to include any "extra" unparsed
+  # #  parameters.
+  # #
+  # # @return [Params::Registry::Instance] an instance containing just
+  # #  the group(s) identified.
+  # #
+  # def group *group, extra: false
+  # end
 
   # Serialize the instance back to a {::URI} query string.
   #
