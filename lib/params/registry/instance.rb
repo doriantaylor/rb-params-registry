@@ -79,6 +79,7 @@ class Params::Registry::Instance
     # canonicalize the keys of the struct
     struct = Types::Input[struct].reduce({}) do |hash, pair|
       key, value = pair
+      # warn "kv: #{key.inspect} => #{value.inspect}"
       if t = @registry[@group][key]
         # warn "yep #{key.inspect}"
         hash[t.id] = value
@@ -196,6 +197,10 @@ class Params::Registry::Instance
     out.merge! @extra if extra
 
     out
+  end
+
+  def inspect
+    "<#{self.class} content: #{@content.inspect}, extra: #{@extra.inspect}>"
   end
 
   # # Retrieve an {Params::Registry::Instance} that isolates the
