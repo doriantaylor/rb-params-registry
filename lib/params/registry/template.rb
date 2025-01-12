@@ -189,7 +189,7 @@ class Params::Registry::Template
   #  valid values are drawn.
   # @return [Object, nil]
   def universe
-    refresh! unless @universe
+    refresh! if @unifunc and not @universe
     @universe
   end
 
@@ -403,7 +403,7 @@ class Params::Registry::Template
       @universe = univ
     end
 
-    nil
+    self
   end
 
   # Return a suitable representation for debugging.

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "version"
+require_relative 'version'
 
 require 'dry-types' # let's try to use this and not hate it
 require 'set'       # for some reason Set is not in the kernel but Range is
@@ -157,6 +157,7 @@ module Params::Registry::Types
 
   Input = self.Constructor(::Hash) do |input|
     input = input.query.to_s if input.is_a? ::URI
+    input = '' if input.nil?
     input = ::URI.decode_www_form input if input.is_a? ::String
 
     case input

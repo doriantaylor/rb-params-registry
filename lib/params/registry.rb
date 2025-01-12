@@ -135,6 +135,31 @@ class Params::Registry
     #
     def templates ; @templates.values; end
 
+    # Assign a new sequence of templates to the group.
+    #
+    # @param templates [Array, Hash]
+    #
+    # @return [Array, Hash] whatever was passed
+    #  in because Ruby ignores the output
+    #
+    def templates= templates
+      templates = templates.to_a if templates.is_a? Hash
+
+      raise ArgumentError,
+        "Don't know what to do with #{templates.class}" unless
+        templates.respond_to? :to_a
+
+      # empty out the actual instance member
+      @templates.clear
+
+      # this should destructure appropriately (XXX MAYBE???) and also
+      # use the overloaded subscript assignment method
+      templates.to_a.each { |id, spec| self[id] = spec || id }
+
+      # now return the new members
+      @templates.values
+    end
+
     # Return the canonical identifier for the template.
     #
     # @param id [Object] the identifier, canonical or otherwise.
@@ -381,11 +406,12 @@ class Params::Registry
 
   # Refresh any stateful elements of the templates.
   #
-  # @return [void]
+  # @return [self]
   #
   def refresh!
     templates.each { |t| t.refresh! }
-    nil
+
+    self
   end
 
   # @!group Quasi-static methods to override in subclasses
