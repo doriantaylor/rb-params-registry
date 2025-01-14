@@ -122,9 +122,7 @@ module Params::Registry::Types
   end
 
   # And {::DateTime}
-  DateTime = self.Constructor(::DateTime) do |x|
-    ::DateTime.parse x
-  end
+  DateTime = self.Constructor(::DateTime) { |x| ::DateTime.parse x }
 
   # Aaand {::Time}
   Time = self.Constructor(::Time) do |x|
@@ -136,6 +134,10 @@ module Params::Registry::Types
   end
 
   # @!group Composite types not already defined
+
+  List = self.Constructor(::Array) do |x|
+    x.respond_to?(:to_a) ? x.to_a : [x]
+  end
 
   # {::Set}
   Set = self.Constructor(::Set) { |x| ::Set[*x] }
