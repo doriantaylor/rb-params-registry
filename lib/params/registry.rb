@@ -137,7 +137,7 @@ class Params::Registry
 
     # Assign a new sequence of templates to the group.
     #
-    # @param templates [Array, Hash]
+    # @param templates [Array, Hash] the set of templates
     #
     # @return [Array, Hash] whatever was passed
     #  in because Ruby ignores the output
@@ -242,8 +242,9 @@ class Params::Registry
     #
     # @return [Params::Registry::Instance] the instance.
     #
-    def process params
-      registry.instance_class.new self, Types::Input[params]
+    def process params, defaults: false, force: false
+      registry.instance_class.new self, Types::Input[params],
+        defaults: defaults, force: force
     end
 
   end
@@ -400,8 +401,9 @@ class Params::Registry
   #
   # @return [Params::Registry::Instance] the instance.
   #
-  def process params
-    instance_class.new self, Types::Input[params]
+  def process params, defaults: false, force: false
+    instance_class.new self, Types::Input[params],
+      defaults: defaults, force: force
   end
 
   # Refresh any stateful elements of the templates.
@@ -409,7 +411,7 @@ class Params::Registry
   # @return [self]
   #
   def refresh!
-    templates.each { |t| t.refresh! }
+    templates.templates.each { |t| t.refresh! }
 
     self
   end

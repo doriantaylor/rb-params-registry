@@ -163,6 +163,13 @@ class Params::Registry::Template
     out
   end
 
+  # @!attribute [r] composite?
+  # Whether this parameter is composite.
+  #
+  # @return [Boolean]
+  #
+  def composite? ; !!@composite; end
+
   # @!attribute [r] preproc?
   # Whether there is a preprocessor function.
   #
@@ -220,6 +227,7 @@ class Params::Registry::Template
   # @return [Boolean]
   #
   def complement? ; !!@complement; end
+
 
   # @!attribute [r] blank?
   # Returns true if the template has no configuration data to speak of.

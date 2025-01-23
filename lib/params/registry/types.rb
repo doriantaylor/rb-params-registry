@@ -143,7 +143,7 @@ module Params::Registry::Types
   Set = self.Constructor(::Set) { |x| ::Set[*x] }
 
   # {::Range}
-  Range = self.Constructor(::Range) { |x| ::Range.new(*x.take(2)) }
+  Range = self.Constructor(::Range) { |x| ::Range.new(*x.take(2).sort) }
 
   # The registry itself
   Registry = self.Instance(::Params::Registry)

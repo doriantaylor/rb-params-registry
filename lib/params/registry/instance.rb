@@ -17,8 +17,15 @@ class Params::Registry::Instance
   # This is the epitome of an internal method. It has weird
   # parameters, modifies state, and returns a value that is useless
   # for anything but subsequent internal processing.
-  def process_one template, values, complement: false, force: false
+  def process_one template, values,
+      defaults: false, complement: false, force: false
+
     del = Set[]
+
+    # if template.composite? and template.composite.valid? values
+    #   @content[template.id] = values
+    #   return del
+    # end
 
     # run the preprocessor
     if template.preproc? and template.consumes.all? { |k| @content.key? k }
@@ -29,8 +36,15 @@ class Params::Registry::Instance
       del += template.consumes
     end
 
+    # coerce this to an array if it isn't already
+    values = values.respond_to?(:to_a) ? values.to_a : [values]
+
     # if this actually goes here then there's a bug in the perl one
-    return del if values.empty? and not force
+    if values.empty? and not force
+      @content[template.id] = template.default.dup if
+        defaults and not template.default.nil?
+      return del
+    end
 
     # now we use the template to process it (note this raises)
     tmp = template.process(*values)
@@ -115,7 +129,8 @@ class Params::Registry::Instance
         c = complements.include? t.id
 
         begin
-          del += process_one t, raw, force: force, complement: c
+          del += process_one t, raw,
+            defaults: defaults, force: force, complement: c
         rescue Params::Registry::Error => e
           errors[t.id] = e
         end
@@ -175,6 +190,18 @@ class Params::Registry::Instance
     @content[template.id]
   end
 
+  # Return a URI with the query set to the string value of this instance.
+  #
+  # @param uri [URI, #query=] the URI you want to assign
+  #
+  # @return [URI, #query=] the URI with the new query string
+  #
+  def make_uri uri
+    uri = uri.dup
+    uri.query = to_s
+    uri
+  end
+
   # Taxidermy this object as an ordinary hash.
   #
   # @param slugs [true, false] whether to use slugs versus canonical keys.
@@ -197,6 +224,10 @@ class Params::Registry::Instance
     out.merge! @extra if extra
 
     out
+  end
+
+  def dup
+    self.class.new @group || @registry, @content.dup
   end
 
   def inspect
