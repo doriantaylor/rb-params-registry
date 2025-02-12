@@ -135,6 +135,38 @@ module Params::Registry::Types
 
   # @!group Composite types not already defined
 
+  # XXX okay so once again dry-types has to be weird as hell. What we
+  # _want_ are `Set.of` and `Range.of` just like the built-in
+  # `Array.of`. What we have to _do_ to achieve this is god-knows-what.
+  #
+  class Container < ::Dry::Types::Nominal
+
+    class Constructor < ::Dry::Types::Array::Constructor
+      def constructor_type = Container::Constructor
+    end
+
+    class Member < ::Dry::Types::Array::Member
+      def constructor_type = Container::Constructor
+    end
+
+    def member_type = Container::Member
+
+    def constructor_type = Container::Constructor
+
+    def of(type)
+      member = case type
+               when ::String then ::Dry::Types[type]
+               else type
+               end
+
+      member_type.new(primitive, **options, member: member)
+    end
+
+  end
+
+  # class List < Array
+  # end
+
   List = self.Constructor(::Array) do |x|
     x.respond_to?(:to_a) ? x.to_a : [x]
   end

@@ -66,6 +66,14 @@ class Params::Registry::Instance
     del # the keys slated for deletion
   end
 
+  def encode_value value
+    # URI::encode_www_form_component sucks
+    value = value.to_s.b
+    # the only thing we really need to encode is [&=%#] and non-ascii
+    # because in a query string all other uri chars are legal
+    value.gsub(/[\x0-\x20\x7f-\xff&=%#]/n) { |s| '%%%02X' % s.ord }
+  end
+
   public
 
   attr_reader :registry
@@ -265,7 +273,9 @@ class Params::Registry::Instance
 
       next if v.empty?
 
-      v.map { |v| "#{template.slug || k}=#{v}" }.join ?&
+      v.map do |v|
+        "#{template.slug || encode_value(k)}=#{encode_value v}"
+      end.join ?&
     end.compact.join ?&
   end
 end

@@ -3,7 +3,85 @@
 require_relative 'types'
 require_relative 'error'
 
-# This class manages an individual parameter template.
+# This class manages an individual parameter template. It encapsulates
+# all the information and operations needed to validate and coerce
+# individual parameter values, as well as for serializing them back
+# into a string, and for doing so with bit-for-bit consistency.
+#
+# A parameter template can have a human-readable {::Symbol} as a
+# `slug`, which is distinct from its canonical identifier (`id`),
+# which can be any object, although that must be unique for the entire
+# registry (while a slug only needs to be unique within its enclosing
+# group). It can also have any number of `aliases`.
+#
+# A template can manage a simple type like a string or number, or a
+# composite type like an array, tuple (implemented as a fixed-length
+# array), set, or range containing appropriate simple types. The
+# current (provisional) way to specify the types for the template are
+# the `type` and `composite` initialization parameters, where if the
+# latter is present, the former will be treated as its member type.
+#
+# > If certain forays into open-source diplomacy go well, these can be
+# > consolidated into a single type declaration.
+#
+# A parameter may depend on (`depends`) or conflict (`conflicts`) with
+# other parameters, or even consume (`consumes`) them as input. The
+# cardinality of a parameter is controlled by `min` and `max`, which
+# default to zero and unbounded, respectively. To require a parameter,
+# set `min` to an integer greater than zero, and to enforce a single
+# scalar value, set `max` to 1. (Setting `min` greater than `max` will
+# raise an error.) To control whether a value of `nil` or the empty
+# string is dropped, kept (as the empty string) or kept as `nil`, set
+# the `empty` parameter.
+#
+# When `max` is greater than 1, the template automatically coerces any
+# simple value into an array containing that value. (And when `max` is
+# equal to 1, an array will be replaced with a single value.) Passing
+# an array into #process with fewer than `min` values (or a single
+# value when `min` is greater than 1) will produce an error. Whether
+# the first N values (up to `max`) or the _last_ N values are taken
+# from the input, is controlled by the `shift` parameter.
+#
+# Composite values begin life as arrays of simple values. During
+# processing, the individual values are coerced from what are assumed
+# to be strings, and then the arrays themselves are coerced into the
+# composite types. Serialization is the same thing in reverse, using a
+# function passed into `unwind` (which otherwise defaults to `to_a`)
+# to turn the composite type back into an array, before the individual
+# values being turned into strings by way of the value passed into
+# `format`, which can either be a standard format string or a
+# {::Proc}. The `unwind` function is also expected to sort the
+# array. There is also a `reverse` flag for when it makes sense to
+#
+# The transformation process, from array of strings to composite
+# object and back again, has a few more points of intervention. There
+# is an optional `preproc` function, which is run after the individual
+# values are coerced and before the composite coercion is applied, and
+# a `contextualize` function, which is run after `unwind` but before
+# `format`. Both of these functions make it possible to use
+# information from the parameter's dependencies to manipulate its
+# values based on its context within a live {Params::Registry::Instance}.
+#
+# Certain composite types, such as sets and ranges, have a coherent
+# concept of a `universe`, which is implemented here as a function
+# that generates a compatible object. This is useful for when the
+# serialized representation of a parameter can be large. For instance,
+# if a set's universe has 100 elements and we want to represent the
+# subset with all the elements except for element 42, rather than
+# serializing a 99-element query string, we complement the set and
+# make a note to that effect (to be picked up by the
+# {Params::Registry::Instance} serialization process and put in its
+# `complement` parameter). The function passed into `complement` will
+# be run as an instance method, which has access to `universe`.
+#
+# > Indeed, all supplied {::Proc}s are run via `instance_exec`.
+#
+# The `preproc` and `contextualize` functions are of the form
+# `-> value, hash { expr }` and return an array. The `unwind` and
+# `complement` functions both take the composite value as an argument
+# and return an object of the same type. The `universe` function takes
+# no arguments and returns a composite object.
+#
 class Params::Registry::Template
 
   private
@@ -54,8 +132,11 @@ class Params::Registry::Template
   #  derivatives, a function that returns the universal set or range
   # @param complement [Proc] For {::Set} or {::Range} composite types, a
   #  function that will return the complement of the set or range
-  # @param unwind [Proc] A function that takes the composite type
+  # @param unwind [Proc] A function that takes a composite type
   #  and turns it into an {::Array} of atomic values
+  # @param contextualize [Proc] A function that takes an unwound
+  #  composite value and modifies it based on the other parameters it
+  #  depends on
   # @param reverse [false, true] For {::Range} composite types, a flag
   #  that indicates whether the values should be interpreted and/or
   #  serialized in reverse order. Also governs the serialization of
@@ -65,7 +146,7 @@ class Params::Registry::Template
       composite: nil, format: nil, aliases: nil, depends: nil, conflicts: nil,
       consumes: nil, preproc: nil, min: 0, max: nil, shift: false,
       empty: false, default: nil, universe: nil, complement: nil,
-      unwind: nil, reverse: false
+      unwind: nil, contextualize: nil, reverse: false
 
     @registry   = Types::Registry[registry]
     @id         = Types::NonNil[id]
@@ -83,10 +164,14 @@ class Params::Registry::Template
     @shift      = Types::Bool[shift]
     @empty      = Types::Bool[empty]
     @default    = Types::Nominal::Any[default]
-    @unifunc    = Types::Proc[universe]   if universe
-    @complement = Types::Proc[complement] if complement
-    @unwind     = Types::Proc[unwind]     if unwind
+    @unifunc    = Types::Proc[universe]      if universe
+    @complement = Types::Proc[complement]    if complement
+    @unwfunc    = Types::Proc[unwind]        if unwind
+    @confunc    = Types::Proc[contextualize] if contextualize
     @reverse    = Types::Bool[reverse]
+
+    raise ArgumentError, "min (#{@min}) cannot be greater than max (#{@max})" if
+      @min and @max and @min > @max
 
     # post-initialization hook
     post_init
@@ -123,13 +208,32 @@ class Params::Registry::Template
   # @!attribute [r] default
   #  @return [Object, nil] a default value for the parameter.
   #
+  attr_reader :registry, :id, :slug, :type, :composite, :aliases,
+    :preproc, :min, :max, :default
+
   # @!attribute [r] unwind
   # A function that will take a composite object
   #  and turn it into an array of strings for serialization.
   # @return [Proc, nil]
 
-  attr_reader :registry, :id, :slug, :type, :composite, :aliases,
-    :preproc, :min, :max, :default, :unwind
+  def unwind value, *dependencies, try_complementing: false
+    return unless composite?
+    deps = depends - consumes
+    raise ArgumentError,
+      "Unwinding #{id} requires dependencies #{deps.join ', '}" unless
+      dependencies.length >= deps.length
+
+    func = @unwfunc || proc { |v| v.to_a }
+    out  = instance_exec value, *dependencies.take(deps.length), &func
+
+    if try_complementing
+      diff = universe - out
+      if diff.size > out.size
+      end
+    end
+
+    out
+  end
 
   # @!attribute [r] depends
   # Any parameters this one depends on.
@@ -238,7 +342,7 @@ class Params::Registry::Template
       @format.nil? && @aliases.empty? && @depends.empty? &&
       @conflicts.empty? && @consumes.empty? && @preproc.nil? &&
       @min == 0 && @max.nil? && !@shift && !@empty && @default.nil? &&
-      @unifunc.nil? && @complement.nil? && @unwind.nil? && !@reverse
+      @unifunc.nil? && @complement.nil? && @unwfunc.nil? && !@reverse
   end
 
   # Preprocess a parameter value against itself and/or `consume`d values.
@@ -299,11 +403,29 @@ class Params::Registry::Template
   # Validate a list of individual parameter values and (if one is present)
   # construct a `composite` value.
   #
-  # @param values [Array] the values given for the parameter.
+  # @param value [Object] the values given for the parameter.
   #
   # @return [Object, Array] the processed value(s).
   #
-  def process *values
+  def process value
+    # we get handed a value, what is it
+
+    # if the template is a composite then try to match it against the
+    # composite type (it should be a noop)
+
+    # XXX what we _really_ want is `Types::Set.of` and
+    # `Types::Range.of` but who the hell knows how to actually make
+    # that happen, so what we're gonna do instead is test if the
+    # template is composite, then test the input against the composite
+    # type, then run `unwind` on it and test the individual members
+
+    if composite? and composite.try(value).success?
+      # okay now we unwind
+      value = unwind value
+    end
+
+    # otherwise coerce into an array
+
     out = []
 
     values.each do |v|
@@ -377,13 +499,13 @@ class Params::Registry::Template
     # complement flag
     comp = false
     begin
-      tmp, comp = instance_exec value, *rest, &@unwind
+      tmp, comp = instance_exec value, *rest, &@unwfunc
       value = tmp
     rescue Exception, e
       raise Params::Registry::Error::Empirical.new(
         "Cannot unprocess value #{value} for parameter #{id}: #{e.message}",
         context: self, value: value)
-    end if @unwind
+    end if @unwfunc
 
     # ensure this thing is an array
     value = [value] unless value.is_a? Array
