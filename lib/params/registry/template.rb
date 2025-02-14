@@ -72,15 +72,21 @@ require_relative 'error'
 # make a note to that effect (to be picked up by the
 # {Params::Registry::Instance} serialization process and put in its
 # `complement` parameter). The function passed into `complement` will
-# be run as an instance method, which has access to `universe`.
+# be run as an instance method, which has access to `universe`. Other
+# remarks about these functions:
 #
-# > Indeed, all supplied {::Proc}s are run via `instance_exec`.
-#
-# The `preproc` and `contextualize` functions are of the form
-# `-> value, hash { expr }` and return an array. The `unwind` and
-# `complement` functions both take the composite value as an argument
-# and return an object of the same type. The `universe` function takes
-# no arguments and returns a composite object.
+# * The `preproc` and `contextualize` functions are expected to take
+#   the form `-> value, hash { expr }` and must return an array. The
+#   `hash` here is expected to contain at least the subset of
+#   parameters marked as dependencies (as is done in
+#   {Params::Registry::Instance}), keyed by `slug` or, failing that,
+#   `id`.
+# * The `unwind` and `complement` functions both take the composite
+#   value as an argument (`-> value { expr }`). `unwind` is expected
+#   to return an array of elements, and `complement` should return a
+#   composite object of the same type.
+# * The `universe` function takes no arguments and is expected to
+#   return a composite object of the same type.
 #
 class Params::Registry::Template
 
@@ -88,6 +94,8 @@ class Params::Registry::Template
 
   # this is dumb
   Types = Params::Registry::Types
+  # when in rome
+  E = Params::Registry::Error
 
   # Post-initialization hook for subclasses, because the constructor
   # is so hairy.
@@ -148,27 +156,27 @@ class Params::Registry::Template
       empty: false, default: nil, universe: nil, complement: nil,
       unwind: nil, contextualize: nil, reverse: false
 
-    @registry   = Types::Registry[registry]
-    @id         = Types::NonNil[id]
-    @slug       = Types::Symbol[slug] if slug
-    @type       = Types[type]
-    @composite  = Types[composite] if composite
-    @format     = (Types::Proc | Types::String)[format] if format
-    @aliases    = Types::Array[aliases]
-    @depends    = Types::Array[depends]
-    @conflicts  = Types::Array[conflicts]
-    @consumes   = Types::Array[consumes]
-    @preproc    = Types::Proc[preproc] if preproc
-    @min        = Types::NonNegativeInteger[min || 0]
-    @max        = Types::PositiveInteger.optional[max]
-    @shift      = Types::Bool[shift]
-    @empty      = Types::Bool[empty]
-    @default    = Types::Nominal::Any[default]
-    @unifunc    = Types::Proc[universe]      if universe
-    @complement = Types::Proc[complement]    if complement
-    @unwfunc    = Types::Proc[unwind]        if unwind
-    @confunc    = Types::Proc[contextualize] if contextualize
-    @reverse    = Types::Bool[reverse]
+    @registry  = Types::Registry[registry]
+    @id        = Types::NonNil[id]
+    @slug      = Types::Symbol[slug] if slug
+    @type      = Types[type]
+    @composite = Types[composite] if composite
+    @format    = (Types::Proc | Types::String)[format] if format
+    @aliases   = Types::Array[aliases]
+    @depends   = Types::Array[depends]
+    @conflicts = Types::Array[conflicts]
+    @consumes  = Types::Array[consumes]
+    @preproc   = Types::Proc[preproc] if preproc
+    @min       = Types::NonNegativeInteger[min || 0]
+    @max       = Types::PositiveInteger.optional[max]
+    @shift     = Types::Bool[shift]
+    @empty     = Types::Bool[empty]
+    @default   = Types::Nominal::Any[default]
+    @unifunc   = Types::Proc[universe]      if universe
+    @comfunc   = Types::Proc[complement]    if complement
+    @unwfunc   = Types::Proc[unwind]        if unwind
+    @confunc   = Types::Proc[contextualize] if contextualize
+    @reverse   = Types::Bool[reverse]
 
     raise ArgumentError, "min (#{@min}) cannot be greater than max (#{@max})" if
       @min and @max and @min > @max
@@ -211,26 +219,31 @@ class Params::Registry::Template
   attr_reader :registry, :id, :slug, :type, :composite, :aliases,
     :preproc, :min, :max, :default
 
-  # @!attribute [r] unwind
-  # A function that will take a composite object
-  #  and turn it into an array of strings for serialization.
-  # @return [Proc, nil]
-
-  def unwind value, *dependencies, try_complementing: false
+  # Unwind a composite value into an array of simple values. This
+  # wraps the matching function passed into the constructor, or
+  # `#to_a` in lieu of one.
+  #
+  # @param value [Object] a composite value
+  #
+  # @raise 
+  #
+  # @return [Array] the unwound composite
+  #
+  def unwind value
     return unless composite?
-    deps = depends - consumes
-    raise ArgumentError,
-      "Unwinding #{id} requires dependencies #{deps.join ', '}" unless
-      dependencies.length >= deps.length
 
-    func = @unwfunc || proc { |v| v.to_a }
-    out  = instance_exec value, *dependencies.take(deps.length), &func
+    func = @unwfunc || -> v { v.to_a }
 
-    if try_complementing
-      diff = universe - out
-      if diff.size > out.size
-      end
+    begin
+      out = instance_exec value, &func
+    rescue Exception, e
+      raise E::Internal.new "Unwind on #{id} failed: #{e.message}",
+        value: value, original: e
     end
+
+    raise E::Internal,
+      "Unwind on #{id} returned #{out.class}, not an Array" unless
+      out.is_a? Array
 
     out
   end
@@ -245,8 +258,8 @@ class Params::Registry::Template
       registry.templates.canonical t
     end
 
-    raise Params::Registry::Error,
-      "Malformed dependency declaration on #{t.id}" if out.any?(&:nil?)
+    raise E::Internal, "Malformed dependency declaration on #{id}" if
+      out.any?(&:nil?)
 
     out
   end
@@ -261,8 +274,8 @@ class Params::Registry::Template
       registry.templates.canonical t
     end
 
-    raise Params::Registry::Error,
-      "Malformed conflict declaration on #{t.id}" if out.any?(&:nil?)
+    raise E::Internal, "Malformed conflict declaration on #{id}" if
+      out.any?(&:nil?)
 
     out
   end
@@ -289,8 +302,8 @@ class Params::Registry::Template
   def consumes
     out = @consumes.map { |t| registry.templates.canonical t }
 
-    raise Params::Registry::Error,
-      "Malformed consumes declaration on #{t.id}" if out.any?(&:nil?)
+    raise E::Internal,
+      "Malformed consumes declaration on #{id}" if out.any?(&:nil?)
 
     out
   end
@@ -330,7 +343,7 @@ class Params::Registry::Template
   #
   # @return [Boolean]
   #
-  def complement? ; !!@complement; end
+  def complement? ; !!@comfunc; end
 
 
   # @!attribute [r] blank?
@@ -342,7 +355,8 @@ class Params::Registry::Template
       @format.nil? && @aliases.empty? && @depends.empty? &&
       @conflicts.empty? && @consumes.empty? && @preproc.nil? &&
       @min == 0 && @max.nil? && !@shift && !@empty && @default.nil? &&
-      @unifunc.nil? && @complement.nil? && @unwfunc.nil? && !@reverse
+      @unifunc.nil? && @comfunc.nil? && @unwfunc.nil? && @confunc.nil? &&
+      !@reverse
   end
 
   # Preprocess a parameter value against itself and/or `consume`d values.
@@ -359,9 +373,9 @@ class Params::Registry::Template
       out = [out] unless out.is_a? Array
     rescue Dry::Types::CoercionError => e
       # rethrow a better error
-      raise Params::Registry::Error.new(
-        "Preprocessor failed on #{template.id} with #{}",
-        context: self, value: e)
+      raise E::Internal.new(
+        "Preprocessor failed on #{id} on value #{myself} with #{e.message}",
+        context: self, original: e)
     end
 
     out
@@ -379,25 +393,29 @@ class Params::Registry::Template
     if @format.is_a? Proc
       instance_exec scalar, &@format
     else
-      @format.to_s % scalar
+      (@format || '%s').to_s % scalar
     end
   end
 
   # Return the complement of the composite value for the parameter.
   #
   # @param value [Object] the composite object to complement.
+  # @param unwind [false, true] whether or not to also apply `unwind`
   #
   # @return [Object, nil] the complementary object, if a complement is defined.
   #
-  def complement value
-    return unless @complement
+  def complement value, unwind: false
+    return unless @comfunc
+
     begin
-      instance_exec value, &@complement
+      out = instance_exec value, &@comfunc
     rescue e
-      raise Params::Registry::Error::Empirical.new(
-        "Complement function failed: #{e.message}",
-        context: self, value: value)
-    end if @complement
+      raise E::Internal.new(
+        "Complement function on #{id} failed: #{e.message}",
+        context: self, value: value, original: e)
+    end
+
+    unwind ? self.unwind(out) : out
   end
 
   # Validate a list of individual parameter values and (if one is present)
@@ -408,27 +426,22 @@ class Params::Registry::Template
   # @return [Object, Array] the processed value(s).
   #
   def process value
-    # we get handed a value, what is it
-
-    # if the template is a composite then try to match it against the
-    # composite type (it should be a noop)
-
     # XXX what we _really_ want is `Types::Set.of` and
     # `Types::Range.of` but who the hell knows how to actually make
     # that happen, so what we're gonna do instead is test if the
     # template is composite, then test the input against the composite
     # type, then run `unwind` on it and test the individual members
 
-    if composite? and composite.try(value).success?
-      # okay now we unwind
-      value = unwind value
-    end
+    # coerce and then unwind
+    value = unwind composite[value] if composite?
 
     # otherwise coerce into an array
+    value = [value] unless value.is_a? Array
 
+    # copy to out
     out = []
 
-    values.each do |v|
+    value.each do |v|
       # skip over nil/empty values unless we can be empty
       if v.nil? or v.to_s.empty?
         next unless empty?
@@ -440,8 +453,7 @@ class Params::Registry::Template
           tmp = type[v] # this either crashes or it doesn't
           v = tmp # in which case v is only assigned if successful
         rescue Dry::Types::CoercionError => e
-          raise Params::Registry::Error::Syntax.new e.message,
-            context: self, value: v
+          raise E::Syntax.new e.message, context: self, value: v, original: e
         end
       end
 
@@ -449,8 +461,8 @@ class Params::Registry::Template
     end
 
     # now we deal with cardinality
-    raise Params::Registry::Error::Cardinality.new(
-      "Need #{min} values and there are only #{out.length} values") if
+    raise E::Cardinality,
+      "Need #{min} values and there are only #{out.length} values" if
       out.length < min
 
     # warn "hurr #{out.inspect}, #{max}"
@@ -465,6 +477,9 @@ class Params::Registry::Template
     composite ? composite[out] : out
   end
 
+  # This method takes a value which is assumed to be valid and
+  # transforms it into an array of strings suitable for serialization.
+  #
   # Applies `unwind` to `value` to get an array, then `format` over
   # each of the elements to get strings. If `scalar` is true, it
   # will also return the flag from `unwind` indicating whether or
@@ -476,47 +491,46 @@ class Params::Registry::Template
   # of the parameters specified in `depends`.
   #
   # @param value [Object, Array<Object>] The parameter value(s).
-  # @param rest  [Array<Object>] The rest of the parameter values.
-  # @param with_complement_flag [false, true] Whether to return the
-  #  `complement` flag in addition to the unwound values.
+  # @param dependencies [Hash] The rest of the parameter values.
+  # @param try_complement [false, true] Whether to attempt to
+  #  complement a composite vlaue and return the `complement` flag in
+  #  addition to the unwound values.
   #
   # @return [Array<String>, Array<(Array<String>, false)>,
   #  Array<(Array<String>, true)>, nil] the unwound value(s), plus
   #  optionally the `complement` flag, or otherwise `nil`.
   #
-  def unprocess value, *rest, with_complement_flag: false
-    # take care of empty properly
-    if value.nil?
-      if empty?
-        return [''] if max == 1
-        return [] if max.nil? or max > 1
-      end
+  def unprocess value, dependencies = {}, try_complement: false
+    # we begin assuming the value has not been complemented
+    comp = false
 
-      # i guess this is nil?
-      return
+    if composite?
+      # coerce just to be sure
+      value = composite[value]
+      # now unwind
+      value = unwind value
+
+      if try_complement and complement?
+        tmp = complement value, unwind: true
+        if tmp.length < value.length
+          value = tmp
+          comp  = true
+        end
+      end
+    else
+      value = [value] unless value.is_a? Array
     end
 
-    # complement flag
-    comp = false
-    begin
-      tmp, comp = instance_exec value, *rest, &@unwfunc
-      value = tmp
-    rescue Exception, e
-      raise Params::Registry::Error::Empirical.new(
-        "Cannot unprocess value #{value} for parameter #{id}: #{e.message}",
-        context: self, value: value)
-    end if @unwfunc
+    # now we contextualize
+    value = contextualize value if contextualize?
 
-    # ensure this thing is an array
-    value = [value] unless value.is_a? Array
-
-    # ensure the values are correctly formatted
+    # now we maybe prune out blanks
+    value.compact! unless empty?
+    # any nil at this point is on purpose
     value.map! { |v| v.nil? ? '' : self.format(v) }
 
-    # throw in the complement flag
-    return value, comp if with_complement_flag
-
-    value
+    # now we return the pair if we're trying to complement it
+    try_complement ? [value, comp] : value
   end
 
   # Refreshes stateful information like the universal set, if present.
@@ -528,7 +542,7 @@ class Params::Registry::Template
       # do we want to call or do we want to instance_exec?
       univ = @unifunc.call
 
-      univ = @composite[univ] if @composite
+      univ = composite[univ] if composite?
 
       @universe = univ
     end

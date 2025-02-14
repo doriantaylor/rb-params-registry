@@ -118,7 +118,7 @@ class Params::Registry::Instance
 
     # grab the complements now
     complements = @content[@registry.complement.id] =
-      @registry.complement.process(*struct.fetch(@registry.complement.id, []))
+      @registry.complement.process(struct.fetch(@registry.complement.id, []))
 
     # warn registry.templates.ranked.inspect
 
@@ -265,8 +265,8 @@ class Params::Registry::Instance
     complements = Set[]
     sequence.map do |k|
       template = ts[k]
-      deps = @content.values_at(*(template.depends - template.consumes))
-      v, c = template.unprocess @content[k], *deps, with_complement_flag: true
+      deps = @content.slice(*(template.depends - template.consumes))
+      v, c = template.unprocess @content[k], deps, try_complement: true
       complements << k if c
 
       # warn @content[k], v.inspect

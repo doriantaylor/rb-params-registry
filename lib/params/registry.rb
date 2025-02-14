@@ -6,6 +6,7 @@ require_relative 'registry/template'
 require_relative 'registry/instance'
 
 require 'uri'
+require 'forwardable'
 
 # {Params::Registry} is intended to contain an organization-wide
 # registry of reusable named parameters. The initial purpose of such a
@@ -19,6 +20,10 @@ class Params::Registry
 
   # A group is an identifiable sequence of parameters.
   class Group
+    extend Forwardable
+
+    def_delegators :@templates, :select
+
     # Create a new group.
     #
     # @param registry [Params::Registry] the registry
@@ -270,6 +275,7 @@ class Params::Registry
     # for the closures
     ts = templates
 
+
     # we always want these closures so we steamroll over whatever the
     # user might have put in these slots
     spec.merge!({
@@ -283,7 +289,7 @@ class Params::Registry
       unwind: -> set {
         # XXX do we want to sort this lexically or do we want it in
         # the same order as the keys?
-        [set.to_a.map { |t| t = ts[t]; (t.slug || t.id).to_s }.sort, false]
+        set.to_a.map { |t| t = ts[t]; (t.slug || t.id).to_s }.sort
       }
     })
 
