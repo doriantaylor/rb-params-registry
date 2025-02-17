@@ -55,12 +55,14 @@ require_relative 'error'
 #
 # The transformation process, from array of strings to composite
 # object and back again, has a few more points of intervention. There
-# is an optional `preproc` function, which is run after the individual
-# values are coerced and before the composite coercion is applied, and
-# a `contextualize` function, which is run after `unwind` but before
-# `format`. Both of these functions make it possible to use
+# is an optional `preproc` function, which is run when the
+# {Params::Registry::Instance} is processed,  after the
+# individual values are coerced and before the composite coercion is
+# applied, and a `contextualize` function, which is run after `unwind`
+# but before `format`. Both of these functions make it possible to use
 # information from the parameter's dependencies to manipulate its
-# values based on its context within a live {Params::Registry::Instance}.
+# values based on its context within a live
+# {Params::Registry::Instance}.
 #
 # Certain composite types, such as sets and ranges, have a coherent
 # concept of a `universe`, which is implemented here as a function
@@ -225,14 +227,14 @@ class Params::Registry::Template
   #
   # @param value [Object] a composite value
   #
-  # @raise 
+  # @raise
   #
   # @return [Array] the unwound composite
   #
   def unwind value
     return unless composite?
 
-    func = @unwfunc || -> v { v.to_a }
+    func = @unwfunc || -> v { warn v; v.to_a }
 
     begin
       out = instance_exec value, &func
@@ -345,6 +347,12 @@ class Params::Registry::Template
   #
   def complement? ; !!@comfunc; end
 
+  # @!attribute [r] contextualize?  Whether there is a contextualizing
+  # function present in the unprocessing stack.
+  #
+  # @return [Boolean]
+  #
+  def contextualize? ; !!@confunc; end
 
   # @!attribute [r] blank?
   # Returns true if the template has no configuration data to speak of.
@@ -431,6 +439,8 @@ class Params::Registry::Template
     # that happen, so what we're gonna do instead is test if the
     # template is composite, then test the input against the composite
     # type, then run `unwind` on it and test the individual members
+
+    # warn [(slug || id), value].inspect
 
     # coerce and then unwind
     value = unwind composite[value] if composite?

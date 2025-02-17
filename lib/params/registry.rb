@@ -248,8 +248,8 @@ class Params::Registry
     # @return [Params::Registry::Instance] the instance.
     #
     def process params, defaults: false, force: false
-      registry.instance_class.new self, Types::Input[params],
-        defaults: defaults, force: force
+      registry.instance_class.new self,
+        params: params, defaults: defaults, force: force
     end
 
   end
@@ -408,8 +408,7 @@ class Params::Registry
   # @return [Params::Registry::Instance] the instance.
   #
   def process params, defaults: false, force: false
-    instance_class.new self, Types::Input[params],
-      defaults: defaults, force: force
+    instance_class.new self, params: params, defaults: defaults, force: force
   end
 
   # Refresh any stateful elements of the templates.

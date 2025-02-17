@@ -14,40 +14,49 @@ class Params::Registry::Instance
   # i wish it was smart and would just resolve relative class names
   Types = Params::Registry::Types
 
+  # This method is to process a single parameter _within the context of the
+  # entire parameter set_.
+  #
   # This is the epitome of an internal method. It has weird
   # parameters, modifies state, and returns a value that is useless
   # for anything but subsequent internal processing.
   def process_one template, values,
       defaults: false, complement: false, force: false
 
+    # unconditionally coerce to array unless it already is one
+    values = [values] unless values.is_a? Array
+
+    # warn [:process_one, template.slug || template.id, values].inspect
+
+    # set up the set of elements to be deleted
     del = Set[]
 
-    # if template.composite? and template.composite.valid? values
-    #   @content[template.id] = values
-    #   return del
-    # end
+    if template.composite? and template.composite.try(values.first).success?
+      # do not run the preprocessor
+      values = values.first
+    elsif template.preproc? and template.consumes.all? { |k| @content.key? k }
+      # we prefer the slugs to make it easier on people
+      others = @content.slice(*template.consumes).transform_keys do |k|
+        t = registry.templates[k]
+        t.slug || k
+      end
 
-    # run the preprocessor
-    if template.preproc? and template.consumes.all? { |k| @content.key? k }
-      others = @content.values_at(*template.consumes)
-
-      # XXX maybe we should
+      # run the preproc function
       values = template.preproc values, others
+
+      # add these to the instance parameters to be deleted
       del += template.consumes
     end
 
-    # coerce this to an array if it isn't already
-    values = values.respond_to?(:to_a) ? values.to_a : [values]
-
     # if this actually goes here then there's a bug in the perl one
-    if values.empty? and not force
+    if values.is_a? Array and values.empty? and not force
       @content[template.id] = template.default.dup if
         defaults and not template.default.nil?
       return del
     end
 
     # now we use the template to process it (note this raises)
-    tmp = template.process(*values)
+    tmp = template.process values
     @content[template.id] = tmp if !tmp.nil? or template.empty?
 
     # now we test for conflicts
@@ -76,15 +85,16 @@ class Params::Registry::Instance
 
   public
 
-  attr_reader :registry
+  attr_reader :registry, :extra
 
-  # Make a new instance.
+  # Initialize a parameter instance. Any `params` will be passed to #process.
   #
-  # @param registry [Params::Registry] the registry
-  # @param struct [Hash{Symbol => Array<String>}] something that
-  #  resembles the output of `URI.decode_www_form`.
+  # @param registry [Params::Registry, Params::Registry::Group] the registry
+  # @param params [String, Hash{Symbol => Array}] something that
+  #  resembles either the input or the output of `URI.decode_www_form`.
   #
-  def initialize registry, struct, defaults: false, force: false
+  def initialize registry, params: nil, defaults: false, force: false
+    # deal with registry/group stuff
     if registry.is_a? Params::Registry::Group
       @group    = registry.id
       @registry = registry = registry.registry
@@ -93,13 +103,32 @@ class Params::Registry::Instance
       @registry = registry
     end
 
+    # set up members
     @content  = {}
     @extra    = {}
 
+    process params, defaults: defaults, force: force if params
+  end
+
+  # Process a set of parameters of varying degrees of parsed-ness, up
+  # to and including a raw query string.
+  #
+  # @param params [String, Hash{Symbol => Array}] something that
+  #  resembles either the input or the output of `URI.decode_www_form`.
+  # @param defaults [true, false] whether to include defaults in the result
+  # @param force [false, true] force strict cardinality checking
+  #
+  # @return [self] for daisy-chaining
+  #
+  def process params, defaults: true, force: false
+
     # warn "wtf lol #{@registry[@group].inspect}"
 
-    # canonicalize the keys of the struct
-    struct = Types::Input[struct].reduce({}) do |hash, pair|
+    # warn [:before, params].inspect
+
+    # make sure we get a struct-like object with canonical keys but
+    # don't touch the values yet
+    params = Types::Input[params].reduce({}) do |hash, pair|
       key, value = pair
       # warn "kv: #{key.inspect} => #{value.inspect}"
       if t = @registry[@group][key]
@@ -114,15 +143,15 @@ class Params::Registry::Instance
     end
 
     errors = {} # collect errors so we only raise once at the end
-    del = Set[] # mark for deletion
+    del = Set[] # mark these keys for deletion
 
     # grab the complements now
     complements = @content[@registry.complement.id] =
-      @registry.complement.process(struct.fetch(@registry.complement.id, []))
+      @registry.complement.process(params.fetch(@registry.complement.id, []))
 
     # warn registry.templates.ranked.inspect
 
-    # warn complements.class
+    # warn [:process, params].inspect
 
     # now we get the ranked templates and pass them through
     @registry[@group].ranked.each do |templates|
@@ -132,7 +161,7 @@ class Params::Registry::Instance
         # warn t.id
 
         # obtain the raw values or an empty array instead
-        raw = struct.fetch t.id, []
+        raw = params.fetch t.id, []
 
         c = complements.include? t.id
 
@@ -153,6 +182,9 @@ class Params::Registry::Instance
 
     # delete the unwanted parameters
     del.each { |d| @content.delete d }
+
+    # this is a daisy chainer
+    self
   end
 
   # Retrieve the processed value for a parameter.
@@ -182,31 +214,33 @@ class Params::Registry::Instance
   #
   def []= param, value
     unless template = registry.templates[param]
-      value = value.respond_to?(:to_a) ? value.to_a : value
+      # XXX THIS IS POTENTIALLY DUMB
+      value = value.respond_to?(:to_a) ? value : [value]
       return @extras[param] = value
     end
 
-    # XXX do something less dumb about this
-    c = (@content[registry.complement.id] || Set[]).include? template.id
+    @content[template.id] = template.process value
+  end
 
-    # this modifies @content and may raise
-    del = process_one template, value, force: true, complement: c
-
-    del.each { |d| @content.delete d }
-
-    # return
-    @content[template.id]
+  # Bulk-assign instance content.
+  #
+  # @param struct [Hash]
+  #
+  def content= struct
+    # just use the member assign we already have
+    struct.each { |k, v| self[k] = v }
   end
 
   # Return a URI with the query set to the string value of this instance.
   #
   # @param uri [URI, #query=] the URI you want to assign
+  # @param defaults [false, true] whether to include defaults
   #
   # @return [URI, #query=] the URI with the new query string
   #
-  def make_uri uri
+  def make_uri uri, defaults: false
     uri = uri.dup
-    uri.query = to_s
+    uri.query = to_s defaults: defaults
     uri
   end
 
@@ -234,32 +268,21 @@ class Params::Registry::Instance
     out
   end
 
+  # Create a shallow copy of the parameter instance.
+  #
+  # @return [Params::Registry::Instance] the copy
+  #
   def dup
-    self.class.new @group || @registry, @content.dup
+    out = self.class.new @registry[@group]
+    out.content = @content.dup
+    out
   end
-
-  def inspect
-    "<#{self.class} content: #{@content.inspect}, extra: #{@extra.inspect}>"
-  end
-
-  # # Retrieve an {Params::Registry::Instance} that isolates the
-  # # intersection of one or more groups
-  # #
-  # # @param group [Object] the group identifier.
-  # # @param extra [false, true] whether to include any "extra" unparsed
-  # #  parameters.
-  # #
-  # # @return [Params::Registry::Instance] an instance containing just
-  # #  the group(s) identified.
-  # #
-  # def group *group, extra: false
-  # end
 
   # Serialize the instance back to a {::URI} query string.
   #
   # @return [String] the instance serialized as a URI query string.
   #
-  def to_s
+  def to_s defaults: false, extra: false
     ts = registry.templates
     sequence = ts.keys & @content.keys
     complements = Set[]
@@ -277,5 +300,13 @@ class Params::Registry::Instance
         "#{template.slug || encode_value(k)}=#{encode_value v}"
       end.join ?&
     end.compact.join ?&
+  end
+
+  # Return a string representation of the object suitable for debugging.
+  #
+  # @return [String] said string representation
+  #
+  def inspect
+    "<#{self.class} content: #{@content.inspect}, extra: #{@extra.inspect}>"
   end
 end

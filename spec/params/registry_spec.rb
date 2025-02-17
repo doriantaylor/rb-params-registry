@@ -51,7 +51,7 @@ RSpec.describe Params::Registry do
     end
   end
 
-  context 'how about actually parsing something' do
+  context 'parsing input' do
     subject do
       Params::Registry.new templates: {
         year: {
@@ -70,32 +70,46 @@ RSpec.describe Params::Registry do
           type: Params::Registry::Types::Date,
           max: 1,
           consumes: %i[year month day],
-          preproc: -> _, others { '%04d-%02d-%02d' % others },
+          preproc: -> _, others {
+            '%04d-%02d-%02d' % others.values_at(:year, :month, :day) },
         },
         test: {
           slug: :slug,
           max: 1,
         },
+        boundary: {
+          type: Params::Registry::Types::Integer,
+          composite: Params::Registry::Types::Range,
+          unwind: -> value { value.minmax },
+          default: 1..100,
+          # min: 2,
+        },
+      }, groups: {
+        paginated: %i[boundary],
       }
     end
 
-    it 'generates a simple instance' do
+    it 'initializes an instance from a string' do
       instance = subject.process 'test=foo'
       # warn instance.to_s
       expect(instance).to be_a Params::Registry::Instance
     end
 
     it 'generates a grouped instance' do
+      instance = subject[:paginated].process 'boundary=1&boundary=10&test=foo'
+      expect(instance[:test]).to be_nil
+      expect(instance.extra[:test]).to_not be_nil
     end
 
     it 'shares parameters among groups' do
+      # TODO lol
     end
 
     it 'correctly complains about conflicts' do
+      # TODO lol
     end
 
-    # note: "complex" is distinct from "composite"
-    it 'consumes elementary parameters to construct complex ones' do
+    it 'consumes elementary parameters to construct derived ones' do
       instance = subject.process 'year=2023&month=10&day=04&test=hi'
       # warn instance.to_s
       expect(instance[:date]).to be_a Date # should be single coerced value
@@ -105,6 +119,52 @@ RSpec.describe Params::Registry do
 
     it 'handles its complement correctly' do
       expect(subject.complement).to be
+    end
+
+    # it turns out `Range` is useful for testing composites because
+    # `#to_a` (the default unwind function) has obviously wrong
+    # behaviour.
+
+    context '(composite)' do
+      it 'processes correctly from the template' do
+        value = subject.templates[:boundary].process %w[1 10]
+        expect(value).to eq(1..10)
+      end
+      it 'initializes from a parsed struct' do
+        instance = subject.process({ boundary: 1..10 })
+        expect(instance[:boundary]).to eq(1..10)
+      end
+
+      it 'initializes from a raw struct' do
+        instance = subject.process({ boundary: %w[1 10] })
+        expect(instance[:boundary]).to eq(1..10)
+      end
+
+      it 'initializes from a string' do
+        instance = subject.process 'boundary=1&boundary=10'
+        expect(instance[:boundary]).to eq(1..10)
+      end
+
+      it 'dups/clones successfully' do
+        i1 = subject.process({ boundary: 1..10 })
+        i2 = i1.dup
+
+        expect(i2[:boundary]).to eq(1..10)
+      end
+
+      it 'takes assignments correctly' do
+        instance = subject.process({ boundary: 1..10 })
+        instance[:boundary] = 1..50
+        expect(instance[:boundary]).to eq(1..50)
+      end
+    end
+
+    context '(serialization)' do
+      it 'serializes correctly' do
+      end
+
+      it 'omits defaults unless explicitly told to render them' do
+      end
     end
   end
 end

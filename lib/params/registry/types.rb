@@ -167,15 +167,34 @@ module Params::Registry::Types
   # class List < Array
   # end
 
+  # XXX UGGGH CAN'T RETURN FROM THESE BECAUSE OF COURSE NOT UGGHGGHHG
+
   List = self.Constructor(::Array) do |x|
-    x.respond_to?(:to_a) ? x.to_a : [x]
+    if x.is_a? ::Array
+      x
+    else
+      x.respond_to?(:to_a) ? x.to_a : [x]
+    end
   end
 
   # {::Set}
-  Set = self.Constructor(::Set) { |x| ::Set[*x] }
+  Set = self.Constructor(::Set) do |x|
+    if x.is_a? ::Set
+      x
+    else
+      ::Set[*x]
+    end
+  end
 
   # {::Range}
-  Range = self.Constructor(::Range) { |x| ::Range.new(*x.take(2).sort) }
+  Range = self.Constructor(::Range) do |x|
+    # warn x.inspect
+    if x.is_a? ::Range
+      x
+    else
+      ::Range.new(*x.take(2).sort)
+    end
+  end
 
   # The registry itself
   Registry = self.Instance(::Params::Registry)
@@ -189,13 +208,19 @@ module Params::Registry::Types
   # Groups
   GroupMap = Hash|Hash.map(NonNil, Array|TemplateMap)
 
+  Values = self.Constructor(::Object) do |a|
+    # still kind of torn on how to deal with this
+    a.is_a?(::Array) ? a : [a]
+    # a.respond_to?(:to_a) ? a : [a]
+  end
+
   Input = self.Constructor(::Hash) do |input|
     input = input.query.to_s if input.is_a? ::URI
     input = '' if input.nil?
     input = ::URI.decode_www_form input if input.is_a? ::String
 
     case input
-    when ::Hash then Hash.map(Symbolish, Array.of(String))[input]
+    when ::Hash then Hash.map(Symbolish, Values)[input]
     when ::Array
       input.reduce({}) do |out, pair|
         k, *v = Strict::Array.constrained(min_size: 2)[pair]
