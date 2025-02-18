@@ -234,7 +234,7 @@ class Params::Registry::Template
   def unwind value
     return unless composite?
 
-    func = @unwfunc || -> v { warn v; v.to_a }
+    func = @unwfunc || -> v { v.to_a }
 
     begin
       out = instance_exec value, &func

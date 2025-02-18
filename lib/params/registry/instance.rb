@@ -21,10 +21,10 @@ class Params::Registry::Instance
   # parameters, modifies state, and returns a value that is useless
   # for anything but subsequent internal processing.
   def process_one template, values,
-      defaults: false, complement: false, force: false
+      defaults: true, complement: false, force: false
 
     # unconditionally coerce to array unless it already is one
-    values = [values] unless values.is_a? Array
+    values = values.nil? ? [] : values.is_a?(Array) ? values : [values]
 
     # warn [:process_one, template.slug || template.id, values].inspect
 
@@ -50,6 +50,7 @@ class Params::Registry::Instance
 
     # if this actually goes here then there's a bug in the perl one
     if values.is_a? Array and values.empty? and not force
+      # warn "lol wtf #{template.default}"
       @content[template.id] = template.default.dup if
         defaults and not template.default.nil?
       return del
