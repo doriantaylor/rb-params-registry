@@ -18,9 +18,9 @@ _symbols_, which you have to _manage_, and this is a _problem_.
 table: named parameters that are exposed to the wild through
 mechanisms like URLs and APIs.
 
-## So, query parameters, isn't that like, _super_ anal?
+## So, query parameters, isn't that like, _super_ uptight?
 
-So, I vacillated for _years_ before making [the _first_ version of
+I vacillated for _years_ before making [the _first_ version of
 this module](https://metacpan.org/dist/Params-Registry) back in 2013.
 _Query_ parameters? I mean, who cares? Well, it turns out that if you
 want certain outcomes, this is the kind of software you need. _What_

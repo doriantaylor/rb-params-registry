@@ -244,10 +244,14 @@ class Params::Registry
     # @param params
     #  [String, URI, Hash{#to_sym => Array}, Array<Array<(#to_sym, Object)>>]
     #  the parameter set, in a dizzying variety of inputs.
+    # @param defaults [true, false] whether to include default values
+    #  in the instance
+    # @param force [false, true] whether to force something i don't
+    #  remember what though lol
     #
     # @return [Params::Registry::Instance] the instance.
     #
-    def process params, defaults: false, force: false
+    def process params, defaults: true, force: false
       registry.instance_class.new self,
         params: params, defaults: defaults, force: force
     end
@@ -404,10 +408,14 @@ class Params::Registry
   # @param params
   #  [String, URI, Hash{#to_sym => Array}, Array<Array<(#to_sym, Object)>>]
   #  the parameter set, in a dizzying variety of inputs.
+  # @param defaults [true, false] whether to include default values
+  #  in the instance
+  # @param force [false, true] whether to force something i don't
+  #  remember what though lol
   #
   # @return [Params::Registry::Instance] the instance.
   #
-  def process params, defaults: false, force: false
+  def process params, defaults: true, force: false
     instance_class.new self, params: params, defaults: defaults, force: force
   end
 

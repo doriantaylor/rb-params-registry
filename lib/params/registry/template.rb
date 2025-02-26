@@ -289,6 +289,13 @@ class Params::Registry::Template
   #
   def composite? ; !!@composite; end
 
+  # @!attribute [r] default?
+  # Whether this parameter has a default value.
+  #
+  # @return [Boolean]
+  #
+  def default? ; !@default.nil?; end
+
   # @!attribute [r] preproc?
   # Whether there is a preprocessor function.
   #

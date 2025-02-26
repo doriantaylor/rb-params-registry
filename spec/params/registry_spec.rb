@@ -161,9 +161,16 @@ RSpec.describe Params::Registry do
 
     context '(serialization)' do
       it 'serializes correctly' do
+        instance = subject.process 'test=hi'
+        expect(instance.to_s).to eq('slug=hi')
       end
 
       it 'omits defaults unless explicitly told to render them' do
+        instance = subject.process 'test=hi'
+        expect(instance[:boundary]).to eq(1..100)
+        expect(instance.to_s defaults: true).to eq('slug=hi&boundary=1&boundary=100')
+        expect(instance.to_s defaults: :boundary).to eq('slug=hi&boundary=1&boundary=100')
+        expect(instance.to_s defaults: %i[boundary]).to eq('slug=hi&boundary=1&boundary=100')
       end
     end
   end

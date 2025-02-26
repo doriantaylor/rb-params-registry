@@ -239,9 +239,9 @@ class Params::Registry::Instance
   #
   # @return [URI, #query=] the URI with the new query string
   #
-  def make_uri uri, defaults: false
+  def make_uri uri, defaults: false, extra: false
     uri = uri.dup
-    uri.query = to_s defaults: defaults
+    uri.query = to_s defaults: defaults, extra: extra
     uri
   end
 
@@ -281,14 +281,39 @@ class Params::Registry::Instance
 
   # Serialize the instance back to a {::URI} query string.
   #
+  # @params defaults [false, true, Object, Array] whether to serialize
+  #  default values, or specific keys/slugs to include
+  # @params extra [false, true] whether to include parameters that
+  #  were passed in that aren't in the registry
+  #
   # @return [String] the instance serialized as a URI query string.
   #
   def to_s defaults: false, extra: false
     ts = registry.templates
+
+    # warn ts.inspect
+
+    # this should give us a list of keys that have defaults that we
+    # want to show up
+    defaults = case defaults
+               when nil, false then []
+               when true then ts.select { |k| ts[k].default? }.values.map(&:id)
+               when -> d { d.respond_to? :to_a } then defaults.to_a
+               else [defaults]
+               end.map { |d| ts[d]&.id }.compact
+
+    # the template keys should have the original order so we want to intersee
     sequence = ts.keys & @content.keys
     complements = Set[]
-    sequence.map do |k|
+    out = sequence.map do |k|
       template = ts[k]
+
+      # we want to skip the parameter if it's the same as
+      next if template.default? and @content[k] == template.default and
+        not defaults.include? k
+
+      # get the dependencies, convert to an array of strings, harvest
+      # complement flag (if present)
       deps = @content.slice(*(template.depends - template.consumes))
       v, c = template.unprocess @content[k], deps, try_complement: true
       complements << k if c
@@ -300,7 +325,12 @@ class Params::Registry::Instance
       v.map do |v|
         "#{template.slug || encode_value(k)}=#{encode_value v}"
       end.join ?&
-    end.compact.join ?&
+    end.compact
+
+    # XXX TODO complement and extras i just don't feel like looking up how
+    # that's supposed to work rn but they would go here
+
+    out.join ?&
   end
 
   # Return a string representation of the object suitable for debugging.
